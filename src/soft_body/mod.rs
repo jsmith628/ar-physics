@@ -223,10 +223,7 @@ glsl!{$
 
                     if(gid==0) {
                         mat4 def = strains[id][1];
-                        mat4 cauchy = 0.5*(transpose(def)*def - I);
-                        cauchy = hooke(cauchy, materials[mat_id].normal_stiffness, materials[mat_id].shear_stiffness);
-                        // stress = cauchy_to_nominal(cauchy, def);
-                        stress = cauchy;
+                        stress = pk_stress_unrotated(particles[id].stress, def);
                     }
                     barrier();
 
@@ -244,17 +241,15 @@ glsl!{$
                             float V2 = materials[mat_id2].mass / particles[id2].den;
 
                             mat4 def2 = strains[id2][1];
-                            mat4 cauchy2 = strain_measure(def2);
-                            cauchy2 = hooke(cauchy2, materials[mat_id2].normal_stiffness, materials[mat_id2].shear_stiffness);
-                            mat4 stress2 = cauchy_to_nominal(cauchy2, def2);
-                            // mat4 stress2 = cauchy2;
+                            mat4 stress2 = pk_stress_unrotated(particles[id2].stress, def2);
 
                             vec4 r = particles[id2].ref_pos - particles[id].ref_pos;
 
-                            vec4 el_force = V2 * stress2 * correction * grad_w(r,h,norm_const);
+                            vec4 el_force = V1 * V2 * (stress * correction + stress2 * strains[id2][0]) * grad_w(r,h,norm_const);
+                            // vec4 el_force = V2 * stress2 * strains[id2][0] * grad_w(r,h,norm_const);
                             for(uint k=dim; k<4; k++) el_force[k] = 0;
 
-                            force += el_force;
+                            force -= el_force;
                         }
                     }
 
@@ -361,20 +356,19 @@ glsl!{$
 
                     //get the strain-rate
                     if(materials[mat_id].normal_stiffness!=0 || materials[mat_id].shear_stiffness!=0) {
-                        // mat4 def_inv = strains[id][1];
-                        // for(uint i=dim; i<4; i++) def_inv[i][i] = 1.0;
-                        // def_inv = inverse(def_inv);
-                        // for(uint i=dim; i<4; i++) def_inv[i][i] = 0.0;
-                        //
-                        // mat4 Q, R;
-                        // qr(strains[id][1], Q, R);
-                        //
-                        // mat4 K = strains[id][2] * def_inv;
-                        // mat4 D = 0.5 * (K + transpose(K));
-                        // mat4 d = transpose(Q) * D * Q;
-                        //
-                        // forces[id].stress = materials[mat_id].normal_stiffness*trace(d)*I +
-                        //     2*materials[mat_id].shear_stiffness*d;
+                        mat4 def_inv = strains[id][1];
+                        for(uint i=dim; i<4; i++) def_inv[i][i] = 1.0;
+                        def_inv = inverse(def_inv);
+
+                        mat4 Q, R;
+                        qr(strains[id][1], Q, R);
+
+                        mat4 K = strains[id][2] * def_inv;
+                        mat4 D = 0.5 * (K + transpose(K));
+                        mat4 d = transpose(Q) * D * Q;
+
+                        forces[id].stress = materials[mat_id].normal_stiffness*trace(d)*I +
+                            2*materials[mat_id].shear_stiffness*d;
                     }
 
                     //get acceleration from force and gravity
@@ -510,7 +504,6 @@ glsl!{$
                     if(gid==0) {
                         for(uint i=dim; i<4; i++) correction[0][i][i] = 1.0;
                         correction[0] = inverse(correction[0]);
-                        for(uint i=dim; i<4; i++) correction[0][i][i] = 0.0;
                     }
                     barrier();
 
@@ -550,7 +543,7 @@ glsl!{$
                     if(gid==0) {
                         strains[id][0] = correction[0];
                         strains[id][1] = deformation[0];
-                        strains[id][2] = strain_measure(deformation[0]);
+                        strains[id][2] = def_rate[0];
                     }
 
                 }

@@ -1,0 +1,30 @@
+
+name = "Flow over a cylinder in 2D"
+kernel_radius = 0.008
+gravity = 3.1
+time_step = 0.01
+subticks = 11
+artificial_viscocity = 200.0
+integrator = "RK4"
+
+min = [-0.2,-1.0]
+dim = [0.4,1.1]
+
+[liquids.f1]
+  speed_of_sound = 1000.0
+  viscocity = 0.0
+  color = [0.0,0.0,1.0,1.0]
+  color_low_density = [0.0,1.0,0.0,1.0]
+  color_high_density = [1.0,0.0,0.0,1.0]
+
+  region = {min = [-0.06,-0.5], dim = [0.12,0.4]}
+
+
+[boundaries.border]
+  friction = 0.0
+  region = {min = [-0.2,-1.0], dim = [0.4,1.1], border = 0.02}
+
+
+[boundaries.circle]
+  friction = 0.0
+  region = {center = [-0.0,-0.7], radii = [0.02,0.02]}

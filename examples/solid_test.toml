@@ -1,0 +1,32 @@
+
+name = "Elastic Ball"
+kernel_radius = 0.01
+gravity = 5.1
+time_step = 0.001
+subticks = 160
+artificial_viscocity = 0.0
+integrator = "RK4"
+
+min = [-0.2,-1.0]
+dim = [0.4,1.0]
+
+[elastics.ball]
+  packing = 0.7
+  density = 1.0
+  normal_stiffness = 0.001
+  shear_stiffness = 0.001
+  dampening = 0.0
+  color = [0.0,0.0,1.0,1.0]
+  color_high_density = [1.0,0.0,0.0,1.0]
+  region = {center = [-0.0,-0.7], radii = [0.04,0.04]}
+
+
+[boundaries.floor]
+  packing = 0.2
+  friction = 0.0
+  region = {min = [-0.2,-1.0], dim = [0.4,0.06]}
+
+
+# [liquids.circle]
+#   friction = 0.0
+#   region = {center = [-0.0,-0.7], radii = [0.02,0.02]}

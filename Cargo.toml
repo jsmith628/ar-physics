@@ -1,0 +1,22 @@
+[package]
+name = "ar-physics"
+version = "0.1.0"
+authors = ["Joshua Smith"]
+edition = "2018"
+
+[lib]
+name = "ar_physics"
+path = "src/ar_physics.rs"
+
+[dependencies]
+macro-program = {path="../macro-program"}
+maths-traits = {path="../math-traits"}
+numerical-integration = {path="../numerical-integration"}
+free-algebra = {path="../free-algebra"}
+gl-struct = {path="../gl-struct"}
+ar-engine = {path="../ar-engine"}
+
+[dev-dependencies]
+glfw = "0.25.0"
+rand = "0.5.5"
+toml = "0.4"

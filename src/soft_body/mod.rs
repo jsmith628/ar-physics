@@ -236,9 +236,9 @@ glsl!{$
                         uint ref_count = buckets[bucket_id].count[1];
                         for(uint j=start+sublocal_id; j<start+ref_count; j+=num_sublocal){
                             uint id2 = particle_index(bucket_id, j);
-                            uint mat_id2 = particles[id2].mat;
+                            if(particles[id2].mat != mat_id) continue;
 
-                            float V2 = materials[mat_id2].mass / particles[id2].den;
+                            float V2 = materials[mat_id].mass / particles[id2].den;
 
                             mat4 def2 = strains[id2][1];
                             mat4 stress2 = pk_stress_unrotated(particles[id2].stress, def2);

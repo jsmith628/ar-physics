@@ -306,12 +306,9 @@ impl Div<GLfloat> for ParticleState { type Output=Self; #[inline] fn div(mut sel
 impl AddAssociative for ParticleState {}
 impl AddCommutative for ParticleState {}
 
-impl MetricSpace<GLfloat> for ParticleState { fn distance(self, rhs: Self) -> GLfloat {(self - rhs).norm()} }
-impl SemiNormedSpace<GLfloat> for ParticleState { fn norm(&self) -> GLfloat {self.norm_sqrd().sqrt()} }
-impl NormedSpace<GLfloat> for ParticleState {}
 impl InnerProductSpace<GLfloat> for ParticleState {
     fn inner_product(self, rhs: Self) -> GLfloat {self.bi_form(rhs)}
-    fn norm_sqrd(&self) -> GLfloat {self.q_form()}
+    fn norm_sqrd(self) -> GLfloat {self.q_form()}
 }
 
 impl QuadradicForm<GLfloat> for ParticleState { fn q_form(&self) -> GLfloat {self.clone().bi_form(self.clone())} }

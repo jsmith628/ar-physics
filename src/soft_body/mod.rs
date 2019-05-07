@@ -52,7 +52,7 @@ glsl!{$
 
             float trace(mat4 A) {
                 float t = A[0][0];
-                for(uint i=1; i<4; i++) t+=A[i][i];
+                for(uint i=1; i<dim; i++) t+=A[i][i];
                 return t;
             }
 
@@ -222,10 +222,6 @@ glsl!{$
                 //elastic forces
                 if(elastic) {
 
-                    mat4 def_rate = strains[id][2];
-                    for(uint i=dim; i<4; i++) def_rate[i][i] = 1;
-                    forces[id].den += determinant(def_rate);
-
                     if(gid==0) {
                         mat4 def = strains[id][1];
                         stress = pk_stress_unrotated(particles[id].stress, def);
@@ -371,12 +367,17 @@ glsl!{$
                     if(materials[mat_id].normal_stiffness!=0 || materials[mat_id].shear_stiffness!=0) {
                         mat4 def_inv = strains[id][1];
                         for(uint i=dim; i<4; i++) def_inv[i][i] = 1.0;
+                        float J = determinant(def_inv);
                         def_inv = inverse(def_inv);
+
+                        mat4 def_rate = strains[id][2];
+                        for(uint i=dim; i<4; i++) def_rate[i][i] = 1;
+                        forces[id].den -= trace(J*def_inv*def_rate) * materials[mat_id].start_den;
 
                         mat4 Q, R;
                         qr(strains[id][1], Q, R);
 
-                        mat4 K = strains[id][2] * def_inv;
+                        mat4 K = def_rate * def_inv;
                         mat4 D = 0.5 * (K + transpose(K));
                         mat4 d = transpose(Q) * D * Q;
 

@@ -22,7 +22,7 @@ glsl!{$
             public struct Material {
                 //universal properties
                 bool immobile;
-                float mass, friction;
+                float mass, friction, start_den;
 
                 //fluid properties
                 uint state_eq;
@@ -218,9 +218,10 @@ impl From<MatType> for Material {
     #[inline]
     fn from(mat:MatType) -> Self {
         match mat {
-            MatType::ElasticSolid { density:_, normal_stiffness, shear_stiffness, dampening } => Material {
+            MatType::ElasticSolid { density, normal_stiffness, shear_stiffness, dampening } => Material {
                 immobile: false.into(),
                 mass: 0.0,
+                start_den: density,
                 friction: dampening,
                 state_eq: 0,
                 sound_speed: 0.0, target_den: 0.0,
@@ -229,14 +230,16 @@ impl From<MatType> for Material {
             MatType::Liquid { density, speed_of_sound, viscocity } => Material {
                 immobile: false.into(),
                 mass: 0.0,
+                start_den: density,
                 friction: viscocity,
                 state_eq: 1,
                 sound_speed: speed_of_sound, target_den: density,
                 normal_stiffness: 0.0, shear_stiffness: 0.0
             },
-            MatType::Gas { start_density:_, target_density, speed_of_sound, viscocity } => Material {
+            MatType::Gas { start_density, target_density, speed_of_sound, viscocity } => Material {
                 immobile: false.into(),
                 mass: 0.0,
+                start_den: start_density,
                 friction: viscocity,
                 state_eq: 2,
                 sound_speed: speed_of_sound, target_den: target_density,
@@ -245,6 +248,7 @@ impl From<MatType> for Material {
             MatType::Boundary { friction } => Material {
                 immobile: true.into(),
                 mass: 1.0,
+                start_den: 1.0,
                 friction: friction,
                 state_eq: 0, sound_speed: 0.0, target_den: 1.0,
                 normal_stiffness: 0.0,  shear_stiffness: 0.0

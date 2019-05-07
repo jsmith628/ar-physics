@@ -35,13 +35,14 @@ glsl!{$
                 }
 
                 pub fn with_pos_vel(pos: vec4, vel: vec4) -> Self {
+                    let k = 0.0;
                     Particle {
                         den: 0.0,
                         mat: 0,
                         ref_pos: pos,
                         pos: pos,
                         vel: vel,
-                        stress: [[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0]].into()
+                        stress: [[k,0.0,0.0,0.0],[0.0,k,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0]].into()
                     }
                 }
             }

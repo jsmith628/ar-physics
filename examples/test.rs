@@ -64,9 +64,9 @@ glsl!{$
 
                 float d0 = densities[mat];
 
-                // float d = (den-d0)/(d0);
+                float d = (den-d0)/(d0);
                 // float d = 10*determinant(mat2(strain[0].xy, strain[1].xy)) + den * 0.00000001*d0;
-                float d = 1000*(strain[0].x*strain[1].y - strain[1].x*strain[0].y) + den * 0.00000001*d0;
+                // float d = 100000*(strain[0].x*strain[1].y - strain[1].x*strain[0].y) + den * 0.00000001*d0;
                 // float d = (strain[0].x + strain[1].y) + den * 0.00000001*d0;
                 if(d<0){
                     frag_color = mix(c2[mat], c1[mat], -d/5);

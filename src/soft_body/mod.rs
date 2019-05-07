@@ -325,7 +325,7 @@ glsl!{$
 
                         //artificial viscocity
                         if(j>=bc) force -= m1*m2*(
-                            (f*h*(c2+c2))*dot(v, r) / ((d1+d2)*(dot(r,r)+EPSILON*h*h))
+                            (f*h*(c1+c2))*dot(v, r) / ((d1+d2)*(dot(r,r)+EPSILON*h*h))
                         )*grad_w(r, h, norm_const);
 
                     }

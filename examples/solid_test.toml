@@ -1,10 +1,10 @@
 
 name = "Elastic Ball"
 kernel_radius = 0.01
-gravity = 2.0
+gravity = 5.0
 time_step = 0.001
 subticks = 10
-artificial_viscocity = 0.0
+artificial_viscocity = 200.0
 integrator = "RK4"
 
 min = [-0.2,-1.0]
@@ -19,12 +19,12 @@ dim = [0.4,1.0]
   color = [0.0,0.0,1.0,1.0]
   color_high_density = [1.0,0.0,0.0,1.0]
   color_low_density = [0.0,1.0,0.0,1.0]
-  region = {center = [-0.0,-0.85], diameters = [0.08,0.08]}
+  region = {center = [-0.0,-0.8], diameters = [0.08,0.08]}
 
 
 [boundaries.floor]
   packing = 0.2
-  friction = 0.0
+  friction = 1000.0
   region = {min = [-0.2,-1.0], dim = [0.4,0.06]}
 
 

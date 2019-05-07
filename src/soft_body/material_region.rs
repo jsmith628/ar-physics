@@ -224,7 +224,7 @@ impl From<MatType> for Material {
                 start_den: density,
                 friction: dampening,
                 state_eq: 0,
-                sound_speed: 0.0, target_den: 0.0,
+                sound_speed: 300.0, target_den: 0.0,
                 normal_stiffness: normal_stiffness, shear_stiffness: shear_stiffness
             },
             MatType::Liquid { density, speed_of_sound, viscocity } => Material {

@@ -306,17 +306,14 @@ impl Div<GLfloat> for ParticleState { type Output=Self; #[inline] fn div(mut sel
 impl AddAssociative for ParticleState {}
 impl AddCommutative for ParticleState {}
 
-impl MetricSpace<GLfloat> for ParticleState { fn distance(self, rhs: Self) -> GLfloat {(self - rhs).norm()} }
-impl SemiNormedSpace<GLfloat> for ParticleState { fn norm(&self) -> GLfloat {self.norm_sqrd().sqrt()} }
-impl NormedSpace<GLfloat> for ParticleState {}
 impl InnerProductSpace<GLfloat> for ParticleState {
-    fn inner_product(self, rhs: Self) -> GLfloat {self.bi_form(rhs)}
-    fn norm_sqrd(&self) -> GLfloat {self.q_form()}
+    fn inner_product(self, rhs: Self) -> GLfloat {self.dot(rhs)}
+    fn norm_sqrd(self) -> GLfloat {self.q_form()}
 }
 
-impl QuadradicForm<GLfloat> for ParticleState { fn q_form(&self) -> GLfloat {self.clone().bi_form(self.clone())} }
+impl QuadradicForm<GLfloat> for ParticleState { fn q_form(self) -> GLfloat {self.clone().dot(self)} }
 impl BilinearForm<GLfloat> for ParticleState {
-    fn bi_form(self, rhs: Self) -> GLfloat {
+    fn dot(self, rhs: Self) -> GLfloat {
         let a = self.arith.clone().or_else(|| rhs.arith.clone());
         if let Some(arith) = a {
             let prof = unsafe { crate::PROFILER.as_mut().unwrap() };

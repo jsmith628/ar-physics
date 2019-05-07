@@ -205,6 +205,7 @@ glsl!{$
                 //save these properties for convenience
                 float m1 = materials[mat_id].mass;
                 float d1 = particles[id].den;
+                bool elastic = materials[mat_id].normal_stiffness!=0 || materials[mat_id].shear_stiffness!=0;
 
                 //local variables for storing the result
                 float den = 0;
@@ -219,7 +220,11 @@ glsl!{$
                 ivec3 b_pos = local_bucket_pos(indices[id].ref_index);
 
                 //elastic forces
-                if(materials[mat_id].normal_stiffness!=0 || materials[mat_id].shear_stiffness!=0) {
+                if(elastic) {
+
+                    mat4 def_rate = strains[id][2];
+                    for(uint i=dim; i<4; i++) def_rate[i][i] = 1;
+                    forces[id].den += determinant(def_rate);
 
                     if(gid==0) {
                         mat4 def = strains[id][1];
@@ -249,7 +254,7 @@ glsl!{$
                             // vec4 el_force = V2 * stress2 * strains[id2][0] * grad_w(r,h,norm_const);
                             for(uint k=dim; k<4; k++) el_force[k] = 0;
 
-                            force -= el_force;
+                            force += el_force;
                         }
                     }
 
@@ -303,13 +308,21 @@ glsl!{$
                         float p2 = pressure(state_eq2, d2, 0, c2, materials[mat_2].target_den);
 
                         //density update
-                        den += m2 * dot(v, grad_w(r, h, norm_const));
+                        if(!elastic) {
+                            den += m2 * dot(v, grad_w(r, h, norm_const));
+                        }
 
                         //pressure force
-                        force += m1*m2*(
-                            p1/(d1*d1) +
-                            p2/(d2*d2)
-                        ) * grad_w(r, h, norm_const);
+                        if(true) {
+                            force += m1*m2*(
+                                p1/(d1*d1) +
+                                p2/(d2*d2)
+                            ) * grad_w(r, h, norm_const);
+                        } else if(j<bc) {
+                            float l = length(r);
+                            float dr = max(2*h - l, 0);
+                            force -= 100*sqrt(dr*0.5*h) * r / l ;
+                        }
 
                         //friction/viscocity
                         force += m1*m2*(f1+f2)*dot(r,grad_w(r, h, norm_const))*v/(d1*d2*(dot(r,r)+EPSILON*h*h));

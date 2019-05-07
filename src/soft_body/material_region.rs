@@ -94,15 +94,24 @@ glsl!{$
                 }
 
                 fn contains(&self, p: vec4) -> bool {
-                    let r2 = (0..4).fold(0.0, |c, i| {
-                        let d = p[i] - self.center[i];
-                        if self.radii[i]>0.0 {
-                            c + d*d/(self.radii[i]*self.radii[i])
+                    let lhs = (0..4).fold(0.0, |c, i| {
+                        let d = (p[i] - self.center[i]) as f64;
+                        let r = self.radii[i] as f64;
+                        if r > 0.0 {
+                            let coeff = (0..4).fold(1.0, |prod, j| {
+                                if self.radii[j]>0.0 && j!=i {
+                                    prod * self.radii[i] as f64
+                                } else {
+                                    prod
+                                }
+                            });
+                            c + d*d*coeff*coeff
                         } else {
                             c
                         }
                     });
-                    r2 < 1.0
+                    let rhs = (0..4).fold(1.0, |rhs, i| if self.radii[i]>0.0 {rhs * self.radii[i] as f64} else {rhs});
+                    lhs <= rhs * rhs
                 }
             }
 
@@ -316,9 +325,9 @@ impl MaterialRegion {
         let mut offset2 = 0.0;
         loop {
             let mut offset = 0.0;
-            pos[1] = bound.min[1]-offset2/2.0;
+            pos[1] = bound.min[1]+offset2;
             loop {
-                pos[0] = bound.min[0]-(offset+offset2)/2.0;
+                pos[0] = bound.min[0]+(offset+offset2);
                 loop {
 
                     num_in_box += 1;
@@ -330,15 +339,15 @@ impl MaterialRegion {
                     }
 
                     pos[0] += h;
-                    if pos[0] - bound.min[0]-offset-offset2 >= bound.dim[0] { break };
+                    if pos[0] - bound.min[0] > bound.dim[0] || bound.dim[0]==0.0  { break };
                 }
                 pos[1] += h/2f32.sqrt();
                 offset = if offset==0.0 {h/2.0} else {0.0};
-                if pos[1] - bound.min[1]-offset2 >= bound.dim[1] { break };
+                if pos[1] - bound.min[1] > bound.dim[1] || bound.dim[1]==0.0 { break };
             }
             pos[2] += h/3.0f32.sqrt();
             offset2 = if offset2==0.0 {h/8f32.sqrt()} else {0.0};
-            if pos[2] - bound.min[2] >= bound.dim[2] { break };
+            if pos[2] - bound.min[2] > bound.dim[2] || bound.dim[2]==0.0 { break };
         }
         list.shrink_to_fit();
 

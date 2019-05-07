@@ -304,9 +304,9 @@ glsl!{$
                         float p2 = pressure(state_eq2, d2, 0, c2, materials[mat_2].target_den);
 
                         //density update
-                        if(!elastic) {
+                        // if(!elastic) {
                             den += m2 * dot(v, grad_w(r, h, norm_const));
-                        }
+                        // }
 
                         //pressure force
                         if(true) {
@@ -372,7 +372,7 @@ glsl!{$
 
                         mat4 def_rate = strains[id][2];
                         for(uint i=dim; i<4; i++) def_rate[i][i] = 1;
-                        forces[id].den -= trace(J*def_inv*def_rate) * materials[mat_id].start_den;
+                        // forces[id].den += trace(-def_rate*def_inv/J) * materials[mat_id].start_den;
 
                         mat4 Q, R;
                         qr(strains[id][1], Q, R);

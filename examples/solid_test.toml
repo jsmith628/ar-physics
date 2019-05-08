@@ -13,19 +13,24 @@ dim = [0.4,1.0]
 [elastics.ball]
   packing = 0.7
   density = 1.0
-  normal_stiffness = -100000.0
+  normal_stiffness = 0.0
   shear_stiffness = -100000.0
   dampening = 0.0
   color = [0.0,0.0,1.0,1.0]
   color_high_density = [1.0,0.0,0.0,1.0]
   color_low_density = [0.0,1.0,0.0,1.0]
-  region = {center = [-0.0,-0.8], dim = [0.08,0.08]}
+  region = {center = [-0.0,-0.75], dim = [0.08,0.08]}
 
 
 [boundaries.floor]
   packing = 0.5
-  friction = 1000.0
+  friction = 0.0
   region = {min = [-0.2,-1.0], dim = [0.4,0.06]}
+
+[boundaries.circle]
+  packing = 0.5
+  friction = 0.0
+  region = {center = [0.03,-0.85], diameters = [0.03,0.03]}
 
 
 # [liquids.circle]

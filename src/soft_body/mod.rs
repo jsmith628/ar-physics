@@ -224,7 +224,7 @@ glsl!{$
 
                     if(gid==0) {
                         mat4 def = strains[id][1];
-                        stress = pk_stress_unrotated(particles[id].stress, def);
+                        stress = def * transpose(particles[id].stress);
                     }
                     barrier();
 
@@ -242,11 +242,11 @@ glsl!{$
                             float V2 = materials[mat_id].mass / particles[id2].den;
 
                             mat4 def2 = strains[id2][1];
-                            mat4 stress2 = pk_stress_unrotated(particles[id2].stress, def2);
+                            mat4 stress2 = def2 * transpose(particles[id2].stress);
 
                             vec4 r = particles[id2].ref_pos - particles[id].ref_pos;
 
-                            vec4 el_force = V1 * V2 * (stress * correction + stress2 * strains[id2][0]) * grad_w(r,h,norm_const);
+                            vec4 el_force = -V1 * V2 * (stress * correction + stress2 * strains[id2][0]) * grad_w(r,h,norm_const);
                             // vec4 el_force = V2 * stress2 * strains[id2][0] * grad_w(r,h,norm_const);
                             for(uint k=dim; k<4; k++) el_force[k] = 0;
 
@@ -304,9 +304,9 @@ glsl!{$
                         float p2 = pressure(state_eq2, d2, 0, c2, materials[mat_2].target_den);
 
                         //density update
-                        // if(!elastic) {
+                        if(!elastic || mat_id==mat_2) {
                             den += m2 * dot(v, grad_w(r, h, norm_const));
-                        // }
+                        }
 
                         //pressure force
                         if(true) {
@@ -365,7 +365,8 @@ glsl!{$
 
                     //get the strain-rate
                     if(materials[mat_id].normal_stiffness!=0 || materials[mat_id].shear_stiffness!=0) {
-                        mat4 def_inv = strains[id][1];
+                        mat4 def = strains[id][1];
+                        mat4 def_inv = def;
                         for(uint i=dim; i<4; i++) def_inv[i][i] = 1.0;
                         float J = determinant(def_inv);
                         def_inv = inverse(def_inv);
@@ -374,12 +375,15 @@ glsl!{$
                         for(uint i=dim; i<4; i++) def_rate[i][i] = 1;
                         // forces[id].den += trace(-def_rate*def_inv/J) * materials[mat_id].start_den;
 
-                        mat4 Q, R;
-                        qr(strains[id][1], Q, R);
+                        // mat4 Q, R;
+                        // qr(strains[id][1], Q, R);
+                        //
+                        // mat4 K = def_rate * def_inv;
+                        // mat4 D = 0.5 * (K + transpose(K));
+                        // mat4 d = transpose(Q) * D * Q;
 
-                        mat4 K = def_rate * def_inv;
-                        mat4 D = 0.5 * (K + transpose(K));
-                        mat4 d = transpose(Q) * D * Q;
+                        mat4 d = transpose(def_rate) * def;
+                        d += 0.5 * (d + transpose(d));
 
                         forces[id].stress = materials[mat_id].normal_stiffness*trace(d)*I +
                             2*materials[mat_id].shear_stiffness*d;

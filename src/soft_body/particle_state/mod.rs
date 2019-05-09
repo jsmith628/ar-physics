@@ -308,11 +308,7 @@ impl AddAssociative for ParticleState {}
 impl AddCommutative for ParticleState {}
 
 impl InnerProductSpace<GLfloat> for ParticleState {
-<<<<<<< HEAD
-    fn inner_product(self, rhs: Self) -> GLfloat {self.bi_form(rhs)}
-=======
     fn inner_product(self, rhs: Self) -> GLfloat {self.dot(rhs)}
->>>>>>> toms_model
     fn norm_sqrd(self) -> GLfloat {self.q_form()}
 }
 

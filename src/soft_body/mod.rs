@@ -385,6 +385,11 @@ glsl!{$
                         mat4 d = transpose(def_rate) * def;
                         d = 0.5 * (d + transpose(d));
 
+                        // mat4 C = transpose(def) * def;
+                        // mat4 d = transpose(def_rate) * def;
+                        // d = 0.5 * (d + transpose(d));
+                        // d = (d*C*C + C*d*C + C*C*d)/3;
+
                         forces[id].stress = materials[mat_id].normal_stiffness*trace(d)*I +
                             2*materials[mat_id].shear_stiffness*d;
                     }

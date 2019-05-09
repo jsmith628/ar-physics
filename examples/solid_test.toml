@@ -11,10 +11,10 @@ min = [-0.2,-1.0]
 dim = [0.4,1.0]
 
 [elastics.ball]
-  packing = 0.9
+  packing = 0.7
   density = 1.0
   normal_stiffness = -100000.0
-  shear_stiffness = -1000000.0
+  shear_stiffness = -100000.0
   dampening = 0.0
   color = [0.0,0.0,1.0,1.0]
   color_high_density = [1.0,0.0,0.0,1.0]

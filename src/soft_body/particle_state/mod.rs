@@ -35,13 +35,14 @@ glsl!{$
                 }
 
                 pub fn with_pos_vel(pos: vec4, vel: vec4) -> Self {
+                    let k = 0.0;
                     Particle {
                         den: 0.0,
                         mat: 0,
                         ref_pos: pos,
                         pos: pos,
                         vel: vel,
-                        stress: [[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0]].into()
+                        stress: [[0.0,0.0,0.0,0.0],[0.0,k,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0]].into()
                     }
                 }
             }
@@ -307,13 +308,17 @@ impl AddAssociative for ParticleState {}
 impl AddCommutative for ParticleState {}
 
 impl InnerProductSpace<GLfloat> for ParticleState {
+<<<<<<< HEAD
     fn inner_product(self, rhs: Self) -> GLfloat {self.bi_form(rhs)}
+=======
+    fn inner_product(self, rhs: Self) -> GLfloat {self.dot(rhs)}
+>>>>>>> toms_model
     fn norm_sqrd(self) -> GLfloat {self.q_form()}
 }
 
-impl QuadradicForm<GLfloat> for ParticleState { fn q_form(&self) -> GLfloat {self.clone().bi_form(self.clone())} }
+impl QuadradicForm<GLfloat> for ParticleState { fn q_form(self) -> GLfloat {self.clone().dot(self)} }
 impl BilinearForm<GLfloat> for ParticleState {
-    fn bi_form(self, rhs: Self) -> GLfloat {
+    fn dot(self, rhs: Self) -> GLfloat {
         let a = self.arith.clone().or_else(|| rhs.arith.clone());
         if let Some(arith) = a {
             let prof = unsafe { crate::PROFILER.as_mut().unwrap() };

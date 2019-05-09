@@ -308,6 +308,24 @@ glsl!{$
                             den += m2 * dot(v, grad_w(r, h, norm_const));
                         }
 
+                        //hourglass restoring force
+                        if(elastic && mat_id==mat_2) {
+                            vec4 dx = r;
+                            vec4 dX = particles[id2].ref_pos - particles[id].ref_pos;
+                            mat4 F1 = strains[id][1];
+                            mat4 F2 = strains[id2][1];
+
+                            vec4 err = 0.5*(F1 + F2)*dX - dx;
+                            float l = length(dx);
+
+                            force -= (100000000*m1*m2/(d1*d2)) *
+                                    (0.5*dot(err,dx)/(l+10*EPSILON*h)) *
+                                    (1/(l*l+EPSILON*h*h)) *
+                                    kernel(dX, h, norm_const) *
+                                    dx/(l+EPSILON*h);
+
+                        }
+
                         //pressure force
                         if(true) {
                             force += m1*m2*(

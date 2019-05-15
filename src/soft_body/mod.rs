@@ -172,6 +172,11 @@ glsl!{$
                 // return 0.5*(def + transpose(def));
             }
 
+            public mat4 strain_rate(mat4 def, mat4 def_rate) {
+                mat4 d = transpose(def_rate) * def;
+                return 0.5 * (d + transpose(d));
+            }
+
             mat4 pk_stress_unrotated(mat4 cauchy, mat4 def_grad, out mat4 Q) {
                 //decompose the gradient into a rotational and shear-stretch component
                 mat4 R;
@@ -285,11 +290,14 @@ glsl!{$
 
                     float lambda = materials[mat_id].normal_stiffness;
                     float mu = materials[mat_id].shear_stiffness;
+                    float visc = materials[mat_id].friction;
 
                     mat4 def = strains[id][1];
+                    mat4 def_rate = strains[id][2];
                     // mat4 strain = particles[id].stress;
                     mat4 strain = strain_measure(def);
-                    mat4 stress = hooke(strain, lambda, mu);
+                    mat4 rate_of_strain = strain_rate(def, def_rate);
+                    mat4 stress = hooke(strain, lambda, mu) + visc * rate_of_strain;
                     stress = def * transpose(stress);
 
                     if(in_bounds(b_pos, subdivisions)) {
@@ -306,9 +314,11 @@ glsl!{$
                             float V2 = materials[mat_id].mass / particles[id2].den;
 
                             mat4 def2 = strains[id2][1];
+                            mat4 def_rate2 = strains[id2][2];
                             // mat4 strain2 = particles[id2].stress;
                             mat4 strain2 = strain_measure(def2);
-                            mat4 stress2 = hooke(strain2, lambda, mu);
+                            mat4 strain_rate2 = strain_rate(def2, def_rate2);
+                            mat4 stress2 = hooke(strain2, lambda, mu) + visc * strain_rate2;
                             stress2 = def2 * transpose(stress2);
 
                             vec4 r = particles[id2].ref_pos - particles[id].ref_pos;
@@ -375,34 +385,45 @@ glsl!{$
                             den += m2 * dot(v, grad_w(r, h, norm_const));
                         }
 
-                        //hourglass restoring force
-                        if(elastic && mat_id==mat_2) {
+                        //hourglass restoring force and contact forces
+                        if(elastic) {
                             vec4 dx = r;
                             vec4 dX = particles[id2].ref_pos - particles[id].ref_pos;
-                            mat4 F1 = strains[id][1];
-                            mat4 F2 = strains[id2][1];
+                            float contact = h;
+                            float r_cut = 2*contact;
 
-                            vec4 err = 0.5*(F1 + F2)*dX - dx;
-                            float l = length(dx);
+                            bool in_contact = dot(dX,dX)>(r_cut*r_cut) && dot(dx,dx)<r_cut*r_cut;
 
-                            force -= (100000000*m1*m2/(d1*d2)) *
-                                    (0.5*dot(err,dx)/(l+10*EPSILON*h)) *
-                                    (1/(l*l+EPSILON*h*h)) *
-                                    kernel(dX, h, norm_const) *
-                                    dx/(l+EPSILON*h);
+                            if(mat_id == mat_2 || in_contact) {
+                                float l = length(dx);
+                                if(mat_id == mat_2) {
+                                    mat4 F1 = strains[id][1];
+                                    mat4 F2 = strains[id2][1];
+
+                                    vec4 err = 0.5*(F1 + F2)*dX - dx;
+
+                                    force -= (100000000*m1*m2/(d1*d2)) *
+                                            (0.5*dot(err,dx)/(l+10*EPSILON*h)) *
+                                            (1/(l*l+EPSILON*h*h)) *
+                                            kernel(dX, h, norm_const) *
+                                            dx/(l+EPSILON*h);
+                                }
+
+                                if(in_contact) {
+                                    float r_geom = contact*contact / r_cut;
+                                    float dr = max(r_cut - l, 0);
+                                    force -= 5000*sqrt(dr*r_geom) * r / l;
+                                }
+                            }
 
                         }
 
                         //pressure force
-                        if(true) {
+                        if(!elastic || (materials[mat_2].normal_stiffness==0 && materials[mat_2].shear_stiffness==0)) {
                             force += m1*m2*(
                                 p1/(d1*d1) +
                                 p2/(d2*d2)
                             ) * grad_w(r, h, norm_const);
-                        } else if(j<bc) {
-                            float l = length(r);
-                            float dr = max(2*h - l, 0);
-                            force -= 100*sqrt(dr*0.5*h) * r / l ;
                         }
 
                         //friction/viscocity

@@ -30,6 +30,7 @@ glsl!{$
             #version 460
 
             #define I (mat4(vec4(1,0,0,0),vec4(0,1,0,0),vec4(0,0,1,0),vec4(0,0,0,1)))
+            #define ZERO (mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0)))
             #define EPSILON 0.1
 
             layout(local_size_x = 9, local_size_y = 3, local_size_z = 3) in;
@@ -80,6 +81,36 @@ glsl!{$
 
             }
 
+            mat4 mat_log(in mat4 A) {
+                mat4 sum = mat4(0);
+                mat4 term = -I;
+
+                const uint N = 5;
+                for(uint i = 1; i<=N; i++) {
+                    term *= -1 * (A - I);
+                    sum += term / float(i);
+                }
+
+                return sum;
+            }
+
+            //denman-beavers algorithm
+            void mat_sqrt(mat4 X, out mat4 sqrt, out mat4 inv_sqrt) {
+                mat4 Yi = X;
+                mat4 Zi = I;
+
+                const uint N = 15;
+                for(uint i=0; i<N; i++){
+                    mat4 Y = 0.5*(Yi + inverse(Zi));
+                    mat4 Z = 0.5*(Zi + inverse(Yi));
+                    Yi = Y;
+                    Zi = Z;
+                }
+
+                sqrt = Yi;
+                inv_sqrt = Zi;
+            }
+
             float state(float density, float temperature, float c, float d0){
                 return (c*c*d0/7)*(pow(density/d0,7)-1);
             }
@@ -89,11 +120,19 @@ glsl!{$
             }
 
             mat4 hooke(mat4 strain, float normal, float shear) {
-                mat4 vol = (1/dim)*trace(strain)*I;
-                mat4 dev = strain - vol;
-                return 3*normal*vol + 2*shear*dev;
+                return normal*trace(strain)*I + 2*shear*strain;
             }
 
+            mat4 johnson_cook(mat4 strain, mat4 strain_rate, float A, float B, float C, uint n) {
+                mat4 ep_n = I;
+                mat4 ep_prime_n = I;
+                for(uint i=0; i<n; i++){
+                    ep_n *= strain;
+                    ep_prime_n *= strain_rate;
+                }
+
+                return (A*I + B * ep_n) * (1 + C * mat_log(ep_prime_n));
+            }
 
             float pressure(uint eq, float density, float temperature, float c, float d0) {
                 if(eq==0) {
@@ -105,11 +144,32 @@ glsl!{$
                 }
             }
 
-            public mat4 strain_measure(mat4 def_grad) {
-                mat4 inv = def_grad;
-                for(uint i=dim; i<4; i++) inv[i][i] = 1.0;
-                inv = inverse(inv);
-                return 0.5*(I - transpose(inv) * inv);
+            mat4 seth_hill(mat4 def, int two_m) {
+                mat4 C = transpose(def)*def;
+                for(uint i=dim; i<4; i++) C[i][i] = 1.0;
+
+                if(two_m==0) {
+                    return 0.5 * mat_log(C);
+                } else {
+                    uint m = abs(two_m) >> 1;
+                    mat4 C_m = I;
+                    for(uint i=0; i<m; i++) C_m *= C;
+                    if((abs(two_m)&1) == 1) {
+                        mat4 s,inv;
+                        mat_sqrt(C, s, inv);
+                        C_m *= s;
+                    }
+                    if(two_m < 0) {
+                        C_m = inverse(C_m);
+                    }
+                    return (1.0/float(two_m)) * (C_m - I);
+                }
+
+            }
+
+            public mat4 strain_measure(mat4 def) {
+                return seth_hill(def, 2);
+                // return 0.5*(def + transpose(def));
             }
 
             mat4 pk_stress_unrotated(mat4 cauchy, mat4 def_grad, out mat4 Q) {
@@ -142,6 +202,8 @@ glsl!{$
             mat4 cauchy_to_nominal(mat4 cauchy, mat4 def_grad) {
                 return transpose(cauchy_to_pk(cauchy, def_grad));
             }
+
+            // mat4 pk2_to_cauchy()
 
 
             layout(std430) buffer particle_list { readonly restrict Particle particles[]; };
@@ -184,8 +246,8 @@ glsl!{$
             shared float shared_den[gids];
             shared vec4 shared_force[gids];
 
-            shared mat4 rot;
-            shared mat4 stress;
+            // shared mat4 rot;
+            // shared mat4 stress;
 
             ivec3 local_bucket_pos(uint id) {
                 ivec3 index = ivec3(buckets[id].index.xyz);
@@ -210,7 +272,6 @@ glsl!{$
                 //local variables for storing the result
                 float den = 0;
                 vec4 force = vec4(0,0,0,0);
-                mat4 strain = mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0));
 
                 //ids for splitting the for loops
                 uint sublocal_id = gl_LocalInvocationID.x/3;
@@ -222,11 +283,14 @@ glsl!{$
                 //elastic forces
                 if(elastic) {
 
-                    if(gid==0) {
-                        mat4 def = strains[id][1];
-                        stress = def * transpose(particles[id].stress);
-                    }
-                    barrier();
+                    float lambda = materials[mat_id].normal_stiffness;
+                    float mu = materials[mat_id].shear_stiffness;
+
+                    mat4 def = strains[id][1];
+                    // mat4 strain = particles[id].stress;
+                    mat4 strain = strain_measure(def);
+                    mat4 stress = hooke(strain, lambda, mu);
+                    stress = def * transpose(stress);
 
                     if(in_bounds(b_pos, subdivisions)) {
                         mat4 correction = strains[id][0];
@@ -242,7 +306,10 @@ glsl!{$
                             float V2 = materials[mat_id].mass / particles[id2].den;
 
                             mat4 def2 = strains[id2][1];
-                            mat4 stress2 = def2 * transpose(particles[id2].stress);
+                            // mat4 strain2 = particles[id2].stress;
+                            mat4 strain2 = strain_measure(def2);
+                            mat4 stress2 = hooke(strain2, lambda, mu);
+                            stress2 = def2 * transpose(stress2);
 
                             vec4 r = particles[id2].ref_pos - particles[id].ref_pos;
 
@@ -339,7 +406,7 @@ glsl!{$
                         }
 
                         //friction/viscocity
-                        force += m1*m2*(f1+f2)*dot(r,grad_w(r, h, norm_const))*v/(d1*d2*(dot(r,r)+EPSILON*h*h));
+                        if(!elastic) force += m1*m2*(f1+f2)*dot(r,grad_w(r, h, norm_const))*v/(d1*d2*(dot(r,r)+EPSILON*h*h));
 
                         //artificial viscocity
                         if(j>=bc) force -= m1*m2*(
@@ -408,8 +475,8 @@ glsl!{$
                         // d = 0.5 * (d + transpose(d));
                         // d = (d*C*C + C*d*C + C*C*d)/3;
 
-                        forces[id].stress = materials[mat_id].normal_stiffness*trace(d)*I +
-                            2*materials[mat_id].shear_stiffness*d;
+                        // forces[id].stress = hooke(d, materials[mat_id].normal_stiffness, materials[mat_id].shear_stiffness);
+                        // forces[id].stress = d;
                     }
 
                     //get acceleration from force and gravity
@@ -485,7 +552,7 @@ glsl!{$
             uniform uint dim;
             uniform float norm_const, h;
 
-            extern mat4 strain_measure(mat4 def_grad);
+            // extern mat4 strain_measure(mat4 def_grad);
 
             void main() {
 

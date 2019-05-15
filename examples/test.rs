@@ -50,7 +50,7 @@ glsl!{$
             in vec4 ref_pos;
             in vec4 pos;
             in vec4 vel;
-            in mat4 strain;
+            // in mat4 strain;
 
             out vec4 frag_color;
 
@@ -465,11 +465,11 @@ fn main() {
 
                 let n = w.particles().buf.len();
                 let m = w.particles().boundary.len();
-                let (den, mat,ref_pos, pos, vel,strain) = Particle::get_attributes(&w.particles().boundary);
-                shader.draw(&mut context, DrawMode::Points, m, den, mat, ref_pos, pos, vel,strain);
+                let (den, mat,ref_pos, pos, vel, _) = Particle::get_attributes(&w.particles().boundary);
+                shader.draw(&mut context, DrawMode::Points, m, den, mat, ref_pos, pos, vel);
 
-                let (den, mat,ref_pos, pos, vel,strain) = Particle::get_attributes(&w.particles().buf);
-                shader.draw(&mut context, DrawMode::Points, n, den, mat, ref_pos, pos, vel,strain);
+                let (den, mat,ref_pos, pos, vel, _) = Particle::get_attributes(&w.particles().buf);
+                shader.draw(&mut context, DrawMode::Points, n, den, mat, ref_pos, pos, vel);
 
             }
         );

@@ -325,11 +325,12 @@ fn main() {
                     let den = as_float_or(&solid, "density", 1.0) as f32;
                     let b = as_float_or(&solid, "normal_stiffness", 1.0) as f32;
                     let s = as_float_or(&solid, "shear_stiffness", 1.0) as f32;
-                    let damp = as_float_or(&solid, "dampening", 0.0) as f32;
+                    let norm_damp = as_float_or(&solid, "normal_dampening", 0.0) as f32;
+                    let shear_damp = as_float_or(&solid, "shear_dampening", 0.0) as f32;
 
                     let mut thing = MaterialRegion::new_elastic(
                         AABB {min: [0.0,0.0,0.0,0.0].into(), dim: [0.0,0.0,0.0,0.0].into()},
-                        packing, den, b, s, damp
+                        packing, den, b, s, norm_damp, shear_damp
                     );
 
                     thing.region = parse_region_from_mat(solid.as_table().unwrap());

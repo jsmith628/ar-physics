@@ -290,14 +290,15 @@ glsl!{$
 
                     float lambda = materials[mat_id].normal_stiffness;
                     float mu = materials[mat_id].shear_stiffness;
-                    float visc = materials[mat_id].friction;
+                    float norm_damp = materials[mat_id].normal_damp;
+                    float shear_damp = materials[mat_id].shear_damp;
 
                     mat4 def = strains[id][1];
                     mat4 def_rate = strains[id][2];
                     // mat4 strain = particles[id].stress;
                     mat4 strain = strain_measure(def);
                     mat4 rate_of_strain = strain_rate(def, def_rate);
-                    mat4 stress = hooke(strain, lambda, mu) + visc * rate_of_strain;
+                    mat4 stress = hooke(strain, lambda, mu) + hooke(rate_of_strain, norm_damp, shear_damp);
                     stress = def * transpose(stress);
 
                     if(in_bounds(b_pos, subdivisions)) {
@@ -311,14 +312,14 @@ glsl!{$
                             uint id2 = particle_index(bucket_id, j);
                             if(particles[id2].mat != mat_id) continue;
 
-                            float V2 = materials[mat_id].mass / particles[id2].den;
+                            float V2 = m1 / particles[id2].den;
 
                             mat4 def2 = strains[id2][1];
                             mat4 def_rate2 = strains[id2][2];
                             // mat4 strain2 = particles[id2].stress;
                             mat4 strain2 = strain_measure(def2);
                             mat4 strain_rate2 = strain_rate(def2, def_rate2);
-                            mat4 stress2 = hooke(strain2, lambda, mu) + visc * strain_rate2;
+                            mat4 stress2 = hooke(strain2, lambda, mu) + hooke(strain_rate2, norm_damp, shear_damp);
                             stress2 = def2 * transpose(stress2);
 
                             vec4 r = particles[id2].ref_pos - particles[id].ref_pos;
@@ -342,7 +343,7 @@ glsl!{$
                     //save these properties for convenience
                     uint state_eq = materials[mat_id].state_eq;
                     float c1 = materials[mat_id].sound_speed;
-                    float f1 = materials[mat_id].friction;
+                    float f1 = materials[mat_id].visc;
                     float d0 = materials[mat_id].target_den;
                     float p1 = pressure(state_eq, d1, 0, c1, d0);
 
@@ -361,7 +362,7 @@ glsl!{$
 
                         uint state_eq2 = materials[mat_2].state_eq;
                         float m2 = materials[mat_2].mass;
-                        float f2 = materials[mat_2].friction;
+                        float f2 = materials[mat_2].visc;
                         float c2 = materials[mat_2].sound_speed;
 
                         vec4 r,v;

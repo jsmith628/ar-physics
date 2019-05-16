@@ -298,9 +298,13 @@ fn main() {
             let mut list = Vec::new();
             let mut mat_number = 0;
 
+            fn get_packing(region: &Value, h: f32) -> f32 {
+                as_float_or(region, "packing", as_float_or(region, "spacing", 0.5*h as f64)/h as f64) as f32
+            }
+
             if let Some(Value::Table(boundaries)) = config.get("boundaries") {
                 for (_, immobile) in boundaries {
-                    let packing = as_float_or(&immobile, "packing", 0.5) as f32;
+                    let packing = get_packing(&immobile, h);
                     let friction = as_float_or(&immobile, "friction", 0.0) as f32;
 
                     let mut boundary = MaterialRegion::new_immobile(
@@ -317,7 +321,7 @@ fn main() {
 
             if let Some(Value::Table(solids)) = config.get("elastics") {
                 for (_, solid) in solids {
-                    let packing = as_float_or(&solid, "packing", 0.5) as f32;
+                    let packing = get_packing(&solid, h);
                     let den = as_float_or(&solid, "density", 1.0) as f32;
                     let b = as_float_or(&solid, "normal_stiffness", 1.0) as f32;
                     let s = as_float_or(&solid, "shear_stiffness", 1.0) as f32;
@@ -339,7 +343,7 @@ fn main() {
 
             if let Some(Value::Table(liquids)) = config.get("liquids") {
                 for (_, liquid) in liquids {
-                    let packing = as_float_or(&liquid, "packing", 0.5) as f32;
+                    let packing = get_packing(&liquid, h);
                     let den = as_float_or(&liquid, "density", 1.0) as f32;
                     let c = as_float_or(&liquid, "speed_of_sound", 1.0) as f32;
                     let visc = as_float_or(&liquid, "viscocity", 0.0) as f32;
@@ -358,7 +362,7 @@ fn main() {
 
             if let Some(Value::Table(liquids)) = config.get("gasses") {
                 for (_, gas) in liquids {
-                    let packing = as_float_or(&gas, "packing", 0.5) as f32;
+                    let packing = get_packing(&gas, h);
                     let start_den = as_float_or(&gas, "start_density", 1.0) as f32;
                     let tar_den = as_float_or(&gas, "target_density", 0.0) as f32;
                     let c = as_float_or(&gas, "speed_of_sound", 1.0) as f32;

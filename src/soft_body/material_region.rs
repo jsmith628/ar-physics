@@ -362,7 +362,7 @@ impl MaterialRegion {
         let mut mat:Material = self.mat.into();
         mat.mass = (box_mass / (num_in_box as f64)) as f32;
 
-        println!("{}", mat.mass/start_density);
+        // println!("{}", mat.mass/start_density);
 
         return (list, mat);
 

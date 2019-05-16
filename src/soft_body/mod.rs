@@ -818,7 +818,7 @@ impl FluidSim {
             d
         };
 
-        println!("{} {} {}", dim, boundary.len(), particles.len());
+        println!("dim={}\nboundary particles: {}\nmobile particles: {}", dim, boundary.len(), particles.len());
 
         let fs = FluidSim {
             integrator: integrator,

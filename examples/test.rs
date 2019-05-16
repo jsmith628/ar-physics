@@ -327,8 +327,6 @@ fn main() {
                     let s = as_float_or(&solid, "shear_stiffness", 1.0) as f32;
                     let damp = as_float_or(&solid, "dampening", 0.0) as f32;
 
-                    println!("{} {}", b, s);
-
                     let mut thing = MaterialRegion::new_elastic(
                         AABB {min: [0.0,0.0,0.0,0.0].into(), dim: [0.0,0.0,0.0,0.0].into()},
                         packing, den, b, s, damp

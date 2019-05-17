@@ -111,6 +111,10 @@ glsl!{$
                 inv_sqrt = Zi;
             }
 
+            float mat_dot(mat4 x, mat4 y) {
+                return dot(x[0], y[0]) + dot(x[1], y[1]) + dot(x[2], y[2]) + dot(x[3], y[3]);
+            }
+
             float state(float density, float temperature, float c, float d0){
                 return (c*c*d0/7)*(pow(density/d0,7)-1);
             }
@@ -123,15 +127,8 @@ glsl!{$
                 return normal*trace(strain)*I + 2*shear*strain;
             }
 
-            mat4 johnson_cook(mat4 strain, mat4 strain_rate, float A, float B, float C, uint n) {
-                mat4 ep_n = I;
-                mat4 ep_prime_n = I;
-                for(uint i=0; i<n; i++){
-                    ep_n *= strain;
-                    ep_prime_n *= strain_rate;
-                }
-
-                return (A*I + B * ep_n) * (1 + C * mat_log(ep_prime_n));
+            float johnson_cook(float strain, float strain_rate, float A, float B, float C, uint N) {
+                return (A + B * pow(strain, N)) * (1 + C * log(strain_rate));
             }
 
             float pressure(uint eq, float density, float temperature, float c, float d0) {
@@ -175,6 +172,11 @@ glsl!{$
             public mat4 strain_rate(mat4 def, mat4 def_rate) {
                 mat4 d = transpose(def_rate) * def;
                 return 0.5 * (d + transpose(d));
+            }
+
+            float eq_plastic_strain(mat4 strain) {
+                mat4 dev = strain - trace(strain) * I / dim;
+                return sqrt(((dim-1)/dim) * mat_dot(dev, dev));
             }
 
             mat4 pk_stress_unrotated(mat4 cauchy, mat4 def_grad, out mat4 Q) {
@@ -260,8 +262,6 @@ glsl!{$
                 return local_offset + index + ivec3(-1,-1,-1);
             }
 
-
-
             void main() {
 
                 //get ids
@@ -285,6 +285,8 @@ glsl!{$
                 //get this particle's reference position bucket and offset depending on our local id
                 ivec3 b_pos = local_bucket_pos(indices[id].ref_index);
 
+                mat4 pk2_stress = ZERO;
+
                 //elastic forces
                 if(elastic) {
 
@@ -296,9 +298,10 @@ glsl!{$
                     mat4 def = strains[id][1];
                     mat4 def_rate = strains[id][2];
                     // mat4 strain = particles[id].stress;
-                    mat4 strain = strain_measure(def);
+                    mat4 strain = strain_measure(def) + particles[id].stress;
                     mat4 rate_of_strain = strain_rate(def, def_rate);
-                    mat4 stress = hooke(strain, lambda, mu) + hooke(rate_of_strain, norm_damp, shear_damp);
+                    pk2_stress = hooke(strain, lambda, mu) + hooke(rate_of_strain, norm_damp, shear_damp);
+                    mat4 stress = pk2_stress;
                     stress = def * transpose(stress);
 
                     if(in_bounds(b_pos, subdivisions)) {
@@ -317,7 +320,7 @@ glsl!{$
                             mat4 def2 = strains[id2][1];
                             mat4 def_rate2 = strains[id2][2];
                             // mat4 strain2 = particles[id2].stress;
-                            mat4 strain2 = strain_measure(def2);
+                            mat4 strain2 = strain_measure(def2) + particles[id2].stress;
                             mat4 strain_rate2 = strain_rate(def2, def_rate2);
                             mat4 stress2 = hooke(strain2, lambda, mu) + hooke(strain_rate2, norm_damp, shear_damp);
                             stress2 = def2 * transpose(stress2);
@@ -472,14 +475,14 @@ glsl!{$
 
                     //get the strain-rate
                     if(materials[mat_id].normal_stiffness!=0 || materials[mat_id].shear_stiffness!=0) {
-                        mat4 def = strains[id][1];
-                        mat4 def_inv = def;
-                        for(uint i=dim; i<4; i++) def_inv[i][i] = 1.0;
-                        float J = determinant(def_inv);
-                        def_inv = inverse(def_inv);
-
-                        mat4 def_rate = strains[id][2];
-                        for(uint i=dim; i<4; i++) def_rate[i][i] = 1;
+                        // mat4 def = strains[id][1];
+                        // mat4 def_inv = def;
+                        // for(uint i=dim; i<4; i++) def_inv[i][i] = 1.0;
+                        // float J = determinant(def_inv);
+                        // def_inv = inverse(def_inv);
+                        //
+                        // mat4 def_rate = strains[id][2];
+                        // for(uint i=dim; i<4; i++) def_rate[i][i] = 1;
                         // forces[id].den += trace(-def_rate*def_inv/J) * materials[mat_id].start_den;
 
                         // mat4 Q, R;
@@ -489,8 +492,8 @@ glsl!{$
                         // mat4 D = 0.5 * (K + transpose(K));
                         // mat4 d = transpose(Q) * D * Q;
 
-                        mat4 d = transpose(def_rate) * def;
-                        d = 0.5 * (d + transpose(d));
+                        // mat4 d = transpose(def_rate) * def;
+                        // d = 0.5 * (d + transpose(d));
 
                         // mat4 C = transpose(def) * def;
                         // mat4 d = transpose(def_rate) * def;
@@ -499,6 +502,16 @@ glsl!{$
 
                         // forces[id].stress = hooke(d, materials[mat_id].normal_stiffness, materials[mat_id].shear_stiffness);
                         // forces[id].stress = d;
+                        float eq_strain = eq_plastic_strain(particles[id].stress);
+                        float stress_norm = sqrt(mat_dot(pk2_stress, pk2_stress));
+                        float yield_stress = johnson_cook(eq_strain, 1, 1000, 0, 0, 2);
+                        if(yield_stress <= stress_norm) {
+                            forces[id].stress = pk2_stress * (1 - yield_stress/stress_norm) / 20000;
+                            // forces[id].stress = (stress_norm - yield_stress)/20000 * (pk2_stress / stress_norm);
+                            // forces[id].stress = ZERO;
+                        } else {
+                            forces[id].stress = ZERO;
+                        }
                     }
 
                     //get acceleration from force and gravity

@@ -1,7 +1,7 @@
 
-name = "Elastic Ball"
+name = "Plastic Ball"
 kernel_radius = 0.01
-gravity = 1.0
+gravity = 5.0
 time_step = 0.001
 subticks = 10
 artificial_viscocity = 0.0
@@ -13,9 +13,10 @@ dim = [0.4,1.0]
 [elastics.ball]
   packing = 0.7
   density = 1.0
-  normal_stiffness = -1.0
-  shear_stiffness = -1.0
-  dampening = 0.0
+  normal_stiffness = -400000.0
+  shear_stiffness = -100000.0
+  # normal_dampening = -5000.0
+  shear_dampening = -1000.0
   color = [0.0,0.0,1.0,1.0]
   color_high_density = [1.0,0.0,0.0,1.0]
   color_low_density = [0.0,1.0,0.0,1.0]

@@ -307,74 +307,53 @@ fn main() {
                     let packing = get_packing(&immobile, h);
                     let friction = as_float_or(&immobile, "friction", 0.0) as f32;
 
-                    let mut boundary = MaterialRegion::new_immobile(
-                        AABB {min: [0.0,0.0,0.0,0.0].into(), dim: [0.0,0.0,0.0,0.0].into()},
-                        packing, friction
-                    );
-
-                    boundary.region = parse_region_from_mat(immobile.as_table().unwrap());
-                    list.push(boundary);
+                    let region = parse_region_from_mat(immobile.as_table().unwrap());
+                    list.push(MaterialRegion::new(region, packing, Material::new_immobile(friction)));
                     set_colors_and_den(&immobile, &mut shader, mat_number, 1.0);
                     mat_number += 1;
                 }
             }
 
-            if let Some(Value::Table(solids)) = config.get("elastics") {
-                for (_, solid) in solids {
-                    let packing = get_packing(&solid, h);
-                    let den = as_float_or(&solid, "density", 1.0) as f32;
-                    let b = as_float_or(&solid, "normal_stiffness", 1.0) as f32;
-                    let s = as_float_or(&solid, "shear_stiffness", 1.0) as f32;
-                    let norm_damp = as_float_or(&solid, "normal_dampening", 0.0) as f32;
-                    let shear_damp = as_float_or(&solid, "shear_dampening", 0.0) as f32;
+            if let Some(Value::Table(objects)) = config.get("objects") {
+                for (_, obj) in objects {
+                    let table = obj.as_table().unwrap();
+                    let mut mat = Material::default();
+                    mat.start_den = as_float_or(&obj, "start_density", as_float_or(&obj, "density", 1.0)) as f32;
+                    mat.target_den = as_float_or(&obj, "target_density", as_float_or(&obj, "density", 1.0)) as f32;
+                    mat.sound_speed = as_float_or(&obj, "speed_of_sound", 0.0) as f32;
+                    mat.visc = as_float_or(&obj, "viscocity", as_float_or(&obj, "friction", 0.0)) as f32;
+                    mat.state_eq = match table.get("state").or(table.get("state_equation")).map(|a| a.as_str().unwrap()) {
+                        None => if table.get("speed_of_sound").is_some() {
+                            if table.get("start_density").is_some() || table.get("target_density").is_some() {
+                                StateEquation::IdealGas
+                            } else {
+                                StateEquation::Tait
+                            }
+                        } else{
+                            StateEquation::Zero
+                        },
+                        Some("Tait") | Some("tait") | Some("Liquid") | Some("liquid") => StateEquation::Tait,
+                        Some("Ideal_Gas") | Some("ideal_gas") | Some("gas") | Some("Gas") => StateEquation::IdealGas,
+                        Some(s) => panic!("Invalid state equation: {}", s)
+                    } as u32;
 
-                    let mut thing = MaterialRegion::new_elastic(
-                        AABB {min: [0.0,0.0,0.0,0.0].into(), dim: [0.0,0.0,0.0,0.0].into()},
-                        packing, den, b, s, norm_damp, shear_damp
-                    );
+                    mat.normal_stiffness = as_float_or(&obj, "normal_stiffness", 0.0) as f32;
+                    mat.shear_stiffness = as_float_or(&obj, "shear_stiffness", 0.0) as f32;
+                    mat.normal_damp = as_float_or(&obj, "normal_dampening", 0.0) as f32;
+                    mat.shear_damp = as_float_or(&obj, "shear_dampening", 0.0) as f32;
 
-                    thing.region = parse_region_from_mat(solid.as_table().unwrap());
-                    list.push(thing);
-                    set_colors_and_den(&solid, &mut shader, mat_number, den);
-                    mat_number += 1;
-                }
-            }
+                    if table.get("yield_strength").is_some() || table.get("relaxation_time").is_some() {
+                        mat.plastic = true.into();
+                        mat.yield_strength = as_float_or(&obj, "yield_strength", 0.0) as f32;
+                        mat.work_hardening = as_float_or(&obj, "work_hardening", 0.0) as f32;
+                        mat.work_hardening_exp = as_float_or(&obj, "work_hardening_exp", 2.0) as f32;
+                        mat.kinematic_hardening = as_float_or(&obj, "kinematic_hardening", 0.0) as f32;
+                        mat.thermal_softening = as_float_or(&obj, "thermal_softening", 0.0) as f32;
+                        mat.relaxation_time = as_float_or(&obj, "relaxation_time", 1.0) as f32;
+                    }
 
-            if let Some(Value::Table(liquids)) = config.get("liquids") {
-                for (_, liquid) in liquids {
-                    let packing = get_packing(&liquid, h);
-                    let den = as_float_or(&liquid, "density", 1.0) as f32;
-                    let c = as_float_or(&liquid, "speed_of_sound", 1.0) as f32;
-                    let visc = as_float_or(&liquid, "viscocity", 0.0) as f32;
-
-                    let mut fluid = MaterialRegion::new_liquid(
-                        AABB {min: [0.0,0.0,0.0,0.0].into(), dim: [0.0,0.0,0.0,0.0].into()},
-                        packing, den, c, visc
-                    );
-
-                    fluid.region = parse_region_from_mat(liquid.as_table().unwrap());
-                    list.push(fluid);
-                    set_colors_and_den(&liquid, &mut shader, mat_number, den);
-                    mat_number += 1;
-                }
-            }
-
-            if let Some(Value::Table(liquids)) = config.get("gasses") {
-                for (_, gas) in liquids {
-                    let packing = get_packing(&gas, h);
-                    let start_den = as_float_or(&gas, "start_density", 1.0) as f32;
-                    let tar_den = as_float_or(&gas, "target_density", 0.0) as f32;
-                    let c = as_float_or(&gas, "speed_of_sound", 1.0) as f32;
-                    let visc = as_float_or(&gas, "viscocity", 0.0) as f32;
-
-                    let mut fluid = MaterialRegion::new_gas(
-                        AABB {min: [0.0,0.0,0.0,0.0].into(), dim: [0.0,0.0,0.0,0.0].into()},
-                        packing, tar_den, start_den, c, visc
-                    );
-
-                    fluid.region = parse_region_from_mat(gas.as_table().unwrap());
-                    list.push(fluid);
-                    set_colors_and_den(&gas, &mut shader, mat_number, start_den);
+                    list.push(MaterialRegion::new(parse_region_from_mat(table), get_packing(&obj, h), mat));
+                    set_colors_and_den(&obj, &mut shader, mat_number, mat.target_den);
                     mat_number += 1;
                 }
             }

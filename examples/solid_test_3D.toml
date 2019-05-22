@@ -1,20 +1,21 @@
 
 name = "Elastic Ball"
-kernel_radius = 0.02
+kernel_radius = 0.025
 gravity = 5.0
 time_step = 0.001
 subticks = 10
-artificial_viscocity = 500000.0
+artificial_viscocity = 0.0
 integrator = "RK4"
 
 min = [-0.2,-1.0,-0.2]
 dim = [0.4,1.0,0.4]
 
-[elastics.ball]
+[objects.ball]
   packing = 0.7
   density = 1.0
   normal_stiffness = -800000.0
   shear_stiffness = -20000000.0
+  shear_dampening = -1000.0
   color = [0.0,0.0,1.0,0.1]
   # color_high_density = [1.0,0.0,0.0,0.1]
   # color_low_density = [0.0,1.0,0.0,0.1]

@@ -30,6 +30,11 @@ glsl!{$
 
                 //elastic properties
                 float normal_stiffness, shear_stiffness, normal_damp, shear_damp;
+
+                //plastic properties
+                bool plastic;
+                float yield_strength, work_hardening, work_hardening_exp, kinematic_hardening, thermal_softening;
+                float relaxation_time;
             }
 
         @Rust
@@ -175,89 +180,85 @@ impl<L:Region, R:Region> Region for Intersection<L, R> {
     fn contains(&self, p: vec4) -> bool {self.0.contains(p) && self.1.contains(p)}
 }
 
-
-#[derive(Copy, Clone, PartialEq)]
-pub enum MatType {
-    ElasticSolid {
-        density: f32,
-        normal_stiffness: f32,
-        shear_stiffness: f32,
-        normal_dampening: f32,
-        shear_dampening: f32
-    },
-    Liquid {
-        density: f32,
-        speed_of_sound: f32,
-        viscocity: f32
-    },
-    Gas {
-        start_density: f32,
-        target_density: f32,
-        speed_of_sound: f32,
-        viscocity: f32
-    },
-    Boundary {
-        friction: f32
-    },
-    General(Material)
+pub struct MatTensor {
+    pub normal: f32,
+    pub shear: f32
 }
 
-impl MatType {
-    #[inline]
-    pub fn start_density(&self) -> f32 {
-        match self {
-            MatType::Boundary { friction: _ } => 1.0,
-            _ => Material::from(*self).start_den
-        }
-    }
+pub struct PlasticParams {
+    pub yield_strength: f32,
+    pub work_hardening: f32,
+    pub work_hardening_exp: f32,
+    pub kinematic_hardening: f32,
+    pub thermal_softening: f32,
+    pub relaxation_time: f32
 }
 
-impl From<MatType> for Material {
-    #[inline]
-    fn from(mat:MatType) -> Self {
-        match mat {
-            MatType::ElasticSolid { density, normal_stiffness, shear_stiffness, normal_dampening, shear_dampening} => {
-                let mut mat = Material::default();
-                mat.start_den = density;
-                mat.sound_speed = 300.0;
-                mat.normal_stiffness = normal_stiffness;
-                mat.shear_stiffness = shear_stiffness;
-                mat.normal_damp = normal_dampening;
-                mat.shear_damp = shear_dampening;
-                mat.state_eq = 0;
-                mat
-            },
-            MatType::Liquid { density, speed_of_sound, viscocity } => {
-                let mut mat = Material::default();
-                mat.start_den = density;
-                mat.target_den = density;
-                mat.sound_speed = speed_of_sound;
-                mat.visc = viscocity;
-                mat.state_eq = 1;
-                mat
-            },
-            MatType::Gas { start_density, target_density, speed_of_sound, viscocity } => {
-                let mut mat = Material::default();
-                mat.start_den = start_density;
-                mat.target_den = target_density;
-                mat.sound_speed = speed_of_sound;
-                mat.visc = viscocity;
-                mat.state_eq = 2;
-                mat
-            },
-            MatType::Boundary { friction } => {
-                let mut mat = Material::default();
-                mat.immobile = true.into();
-                mat.mass = 1.0;
-                mat.target_den = 1.0;
-                mat.start_den = 1.0;
-                mat.visc = friction;
-                mat.state_eq = 0;
-                mat
-            },
-            MatType::General(mat) => mat
-        }
+pub enum StateEquation {
+    Zero = 0,
+    Tait = 1,
+    IdealGas = 2
+}
+
+impl Material {
+
+    pub fn new_liquid(den: f32, sound_speed: f32, visc: f32) -> Self {
+        Self::new_fluid(den, den, sound_speed, visc, StateEquation::Tait)
     }
+
+    pub fn new_gas(start_den: f32, target_den: f32, sound_speed: f32, visc: f32) -> Self {
+        Self::new_fluid(start_den, target_den, sound_speed, visc, StateEquation::IdealGas)
+    }
+
+    pub fn new_fluid(start_den: f32, target_den: f32, sound_speed: f32, visc: f32, state: StateEquation) -> Self {
+        let mut mat = Material::default();
+        mat.start_den = start_den;
+        mat.target_den = target_den;
+        mat.sound_speed = sound_speed;
+        mat.visc = visc;
+        mat.state_eq = state as GLuint;
+        mat
+    }
+
+    pub fn new_elastic_solid(den: f32, stiffness: MatTensor, dampening: MatTensor) {
+        Self::new_solid(den, stiffness, dampening, None);
+    }
+
+    pub fn new_plastic_solid(den: f32, stiffness: MatTensor, dampening: MatTensor, strength: PlasticParams) {
+        Self::new_solid(den, stiffness, dampening, Some(strength));
+    }
+
+    pub fn new_solid(den: f32, stiffness: MatTensor, dampening: MatTensor, strength: Option<PlasticParams>) -> Self {
+        let mut mat = Material::default();
+        mat.start_den = den;
+        mat.normal_stiffness = stiffness.normal;
+        mat.shear_stiffness = stiffness.shear;
+        mat.normal_damp = dampening.normal;
+        mat.shear_damp = dampening.shear;
+
+        if let Some(params) = strength {
+            mat.plastic = true.into();
+            mat.yield_strength = params.yield_strength;
+            mat.work_hardening = params.work_hardening;
+            mat.work_hardening_exp = params.work_hardening_exp;
+            mat.kinematic_hardening = params.kinematic_hardening;
+            mat.thermal_softening = params.thermal_softening;
+            mat.relaxation_time = params.relaxation_time;
+        }
+
+        mat
+
+    }
+
+    pub fn new_immobile(friction: f32) -> Self {
+        let mut mat = Material::default();
+        mat.visc = friction;
+        mat.start_den = 1.0;
+        mat.target_den = 1.0;
+        mat.immobile = true.into();
+        mat
+    }
+
 }
 
 pub type Materials = Buffer<[Material], CopyOnly>;
@@ -266,55 +267,16 @@ pub type Materials = Buffer<[Material], CopyOnly>;
 pub struct MaterialRegion {
     pub region: Rc<Region>,
     pub packing_coefficient: f32,
-    pub mat: MatType
+    pub mat: Material
 }
 
 impl MaterialRegion {
 
-    pub fn new_elastic<R:Region>(region:R, packing: f32, den:f32, bulk: f32, shear: f32, normal_dampening: f32, shear_dampening: f32) -> Self {
+    pub fn new<R:Region>(region: R, packing: f32, mat: Material) -> Self {
         MaterialRegion {
             region: Rc::new(region),
             packing_coefficient: packing,
-            mat: MatType::ElasticSolid {
-                density: den,
-                normal_stiffness: bulk,
-                shear_stiffness: shear,
-                normal_dampening: normal_dampening,
-                shear_dampening: shear_dampening
-            }
-        }
-    }
-
-    pub fn new_liquid<R:Region>(region:R, packing: f32, den:f32, c: f32, visc: f32) -> Self {
-        MaterialRegion {
-            region: Rc::new(region),
-            packing_coefficient: packing,
-            mat: MatType::Liquid {
-                density: den,
-                speed_of_sound: c,
-                viscocity: visc
-            }
-        }
-    }
-
-    pub fn new_gas<R:Region>(region:R, packing: f32, target_den: f32, den:f32, c: f32, visc: f32) -> Self {
-        MaterialRegion {
-            region: Rc::new(region),
-            packing_coefficient: packing,
-            mat: MatType::Gas {
-                start_density: den,
-                target_density: target_den,
-                speed_of_sound: c,
-                viscocity: visc
-            }
-        }
-    }
-
-    pub fn new_immobile<R:Region>(region: R, packing: f32, friction: f32) -> Self {
-        MaterialRegion {
-            region: Rc::new(region),
-            packing_coefficient: packing,
-            mat: MatType::Boundary { friction: friction }
+            mat: mat
         }
     }
 
@@ -327,7 +289,7 @@ impl MaterialRegion {
 
         let mut num_in_box = 0u64;
         let mut pos = bound.min;
-        let start_density = self.mat.start_density();
+        let start_density = self.mat.start_den;
 
         let mut offset2 = 0.0;
         loop {

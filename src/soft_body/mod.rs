@@ -127,7 +127,7 @@ glsl!{$
                 return normal*trace(strain)*I + 2*shear*strain;
             }
 
-            float johnson_cook(float strain, float strain_rate, float A, float B, float C, uint N) {
+            float johnson_cook(float strain, float strain_rate, float A, float B, float C, float N) {
                 return (A + B * pow(strain, N)) * (1 + C * log(strain_rate));
             }
 
@@ -174,9 +174,9 @@ glsl!{$
                 return 0.5 * (d + transpose(d));
             }
 
-            float eq_plastic_strain(mat4 strain) {
+            float eq_plastic_strain_sq(mat4 strain) {
                 mat4 dev = strain - trace(strain) * I / dim;
-                return sqrt(((dim-1)/dim) * mat_dot(dev, dev));
+                return ((dim-1)/dim) * mat_dot(dev, dev);
             }
 
             mat4 pk_stress_unrotated(mat4 cauchy, mat4 def_grad, out mat4 Q) {
@@ -209,9 +209,6 @@ glsl!{$
             mat4 cauchy_to_nominal(mat4 cauchy, mat4 def_grad) {
                 return transpose(cauchy_to_pk(cauchy, def_grad));
             }
-
-            // mat4 pk2_to_cauchy()
-
 
             layout(std430) buffer particle_list { readonly restrict Particle particles[]; };
             layout(std430) buffer boundary_list { readonly restrict Particle boundary[]; };
@@ -466,6 +463,7 @@ glsl!{$
                     forces[id].vel = vec4(0,0,0,0);
                     forces[id].ref_pos = vec4(0,0,0,0);
                     forces[id].pos = particles[id].vel;
+                    forces[id].stress = ZERO;
 
                     //add up each local unit's contributions
                     for(uint i=0; i<shadow; i++) {
@@ -502,16 +500,28 @@ glsl!{$
 
                         // forces[id].stress = hooke(d, materials[mat_id].normal_stiffness, materials[mat_id].shear_stiffness);
                         // forces[id].stress = d;
-                        float eq_strain = eq_plastic_strain(particles[id].stress);
-                        float stress_norm = sqrt(mat_dot(pk2_stress, pk2_stress));
-                        float yield_stress = johnson_cook(eq_strain, 1, 1000, 0, 0, 2);
-                        if(yield_stress <= stress_norm) {
-                            forces[id].stress = pk2_stress * (1 - yield_stress/stress_norm) / 20000;
-                            // forces[id].stress = (stress_norm - yield_stress)/20000 * (pk2_stress / stress_norm);
-                            // forces[id].stress = ZERO;
-                        } else {
-                            forces[id].stress = ZERO;
+
+                        if(materials[mat_id].plastic) {
+
+                            float A = materials[mat_id].yield_strength;
+                            float B = materials[mat_id].work_hardening;
+                            float C = materials[mat_id].kinematic_hardening;
+                            float n = materials[mat_id].work_hardening_exp;
+                            // float m = materials[mat_id].thermal_softening;
+                            float T = materials[mat_id].relaxation_time;
+
+                            float eq_strain = eq_plastic_strain_sq(particles[id].stress);
+                            float stress_norm = mat_dot(pk2_stress, pk2_stress);
+                            // float yield_stress = johnson_cook(eq_strain, 1, A, B, C, n/2);
+                            float yield_stress = johnson_cook(eq_strain, 1, A, B, C, n/2);
+                            if(yield_stress*yield_stress <= stress_norm) {
+                                stress_norm = sqrt(stress_norm);
+                                // forces[id].stress = pk2_stress * (1 - yield_stress/stress_norm) / T;
+                                forces[id].stress = (stress_norm - yield_stress)/T * (pk2_stress / stress_norm);
+                                // forces[id].stress = ZERO;
+                            }
                         }
+
                     }
 
                     //get acceleration from force and gravity

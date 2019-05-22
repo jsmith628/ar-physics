@@ -10,7 +10,7 @@ integrator = "RK4"
 min = [-0.3,-1.0]
 dim = [0.6,1.5]
 
-[liquids.f1]
+[objects.f1]
   speed_of_sound = 6000.0
   viscocity = 0.0
   color = [0.0,0.0,1.0,1.0]
@@ -19,7 +19,7 @@ dim = [0.6,1.5]
   region = {min = [-0.27,-0.97], dim = [0.54,0.3]}
 
 
-[liquids.f2]
+[objects.f2]
   viscocity = 0.0
   speed_of_sound = 6000.0
   color = [0.0,0.0,0.0,1.0]

@@ -10,7 +10,7 @@ integrator = "RK4"
 min = [-0.2,-1.0]
 dim = [0.4,1.0]
 
-[elastics.ball]
+[objects.ball]
   packing = 0.7
   density = 1.0
   normal_stiffness = -400000.0

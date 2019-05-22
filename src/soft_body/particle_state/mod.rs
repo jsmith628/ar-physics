@@ -304,20 +304,11 @@ impl Sub for ParticleState { type Output=Self; #[inline] fn sub(mut self, rhs:Se
 impl Mul<GLfloat> for ParticleState { type Output=Self; #[inline] fn mul(mut self, rhs:GLfloat)->Self {self*=rhs; self} }
 impl Div<GLfloat> for ParticleState { type Output=Self; #[inline] fn div(mut self, rhs:GLfloat)->Self {self/=rhs; self} }
 
-impl Involution for ParticleState { #[inline] fn involute(self) -> Self {self} }
-
 impl AddAssociative for ParticleState {}
 impl AddCommutative for ParticleState {}
 
-impl ReflexiveModule<GLfloat> for ParticleState {}
-impl SesquilinearModule<GLfloat> for ParticleState {}
-impl HermitianModule<GLfloat> for ParticleState {}
-impl BilinearModule<GLfloat> for ParticleState {}
-impl SymmetricModule<GLfloat> for ParticleState {}
-impl InnerProductSpace<GLfloat> for ParticleState {}
-
-impl DotProduct<GLfloat> for ParticleState {
-    fn dot(self, rhs: Self) -> GLfloat {
+impl InnerProductSpace<GLfloat> for ParticleState {
+    fn inner_product(self, rhs: Self) -> GLfloat {
         let a = self.arith.clone().or_else(|| rhs.arith.clone());
         if let Some(arith) = a {
             let prof = unsafe { crate::PROFILER.as_mut().unwrap() };

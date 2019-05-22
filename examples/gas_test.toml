@@ -10,13 +10,13 @@ integrator = "RK4"
 min = [-0.2,-1.0]
 dim = [0.4,1.0]
 
-[liquids.circle]
+[objects.circle]
   speed_of_sound = 1000.0
   density = 20.0
   color = [0.0,0.0,1.0,1.0]
   region = {center = [-0.0,-0.2], radii = [0.03,0.05]}
 
-[gasses.gas]
+[objects.gas]
   speed_of_sound = 1000.0
   start_density = 0.1
   target_density = 0.0
@@ -36,6 +36,6 @@ dim = [0.4,1.0]
   region = {min = [-0.2,-1.0], dim = [0.4,1.0], border = 0.02}
 
 
-# [liquids.circle]
+# [objects.circle]
 #   friction = 0.0
 #   region = {center = [-0.0,-0.7], radii = [0.02,0.02]}

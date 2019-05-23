@@ -13,17 +13,19 @@ dim = [0.4,2.0]
 [objects.bar]
   packing = 0.7
   density = 1.0
-  normal_stiffness = -10000000.0
-  shear_stiffness = -100000000.0
+  normal_stiffness = -10000.0
+  shear_stiffness = -100000.0
+  # normal_stiffness = -10000000.0
+  # shear_stiffness = -100000000.0
   shear_dampening = -1000.0
   color = [0.0,0.0,1.0,1.0]
   color_high_density = [1.0,0.0,0.0,1.0]
   color_low_density = [0.0,1.0,0.0,1.0]
-  region = {center = [-0.0,-0.7], dim = [0.4,0.01]}
-  yield_strength = 1000000.0
-  work_hardening = 100000.0
-  work_hardening_exp = 2.0
-  relaxation_time = 20000.0
+  region = {center = [-0.0,-0.7], dim = [0.3,0.01]}
+  # yield_strength = 1000000.0
+  # work_hardening = 100000.0
+  # work_hardening_exp = 2.0
+  # relaxation_time = 20000.0
 
 # [objects.box]
 #   packing = 0.7
@@ -43,10 +45,10 @@ dim = [0.4,2.0]
 
 [boundaries.floor]
   packing = 0.5
-  friction = 0.0
+  # friction = 0.5
   region = {min = [-0.2,-1.0], dim = [0.4,0.06]}
 
 [boundaries.circle]
   packing = 0.5
-  friction = 0.0
-  region = {center = [0.00,-0.8], diameters = [0.03,0.03]}
+  # friction = 0.1
+  region = {center = [0.03,-0.8], diameters = [0.05,0.05]}

@@ -20,14 +20,14 @@ dim = [0.4,1.0]
   color = [0.0,0.0,1.0,1.0]
   color_high_density = [1.0,0.0,0.0,1.0]
   color_low_density = [0.0,1.0,0.0,1.0]
-  region = {center = [-0.0,-0.4], dim = [0.08,0.08]}
+  region = {center = [-0.0,-0.75], dim = [0.08,0.08]}
   yield_strength = 100000.0
   relaxation_time = 100000.0
 
 
 [boundaries.floor]
   packing = 0.5
-  friction = 0.0
+  friction = 1000.0
   region = {min = [-0.2,-1.0], dim = [0.4,0.06]}
 
 # [boundaries.circle]

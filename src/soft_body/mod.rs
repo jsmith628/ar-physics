@@ -386,6 +386,8 @@ glsl!{$
                             den += m2 * dot(v, grad_w(r, h, norm_const));
                         }
 
+                        vec4 contact_force = vec4(0,0,0,0);
+
                         //hourglass restoring force and contact forces
                         if(elastic) {
                             vec4 dx = r;
@@ -413,22 +415,35 @@ glsl!{$
                                 if(in_contact) {
                                     float r_geom = contact*contact / r_cut;
                                     float dr = max(r_cut - l, 0);
-                                    force -= 5000*sqrt(dr*r_geom) * r / l;
+                                    contact_force = -5000*sqrt(dr*r_geom) * r / l;
+                                    force += contact_force;
                                 }
                             }
 
                         }
 
+                        bool elastic2 = materials[mat_2].normal_stiffness!=0 || materials[mat_2].shear_stiffness!=0;
+
                         //pressure force
-                        if(!elastic || (materials[mat_2].normal_stiffness==0 && materials[mat_2].shear_stiffness==0)) {
-                            force += m1*m2*(
+                        if(!elastic || !elastic2) {
+                            vec4 pressure_force = m1*m2*(
                                 p1/(d1*d1) +
                                 p2/(d2*d2)
                             ) * grad_w(r, h, norm_const);
+                            force += pressure_force;
+                            if(mat_id != mat_2) contact_force += pressure_force;
                         }
 
-                        //friction/viscocity
+                        //viscocity
                         if(!elastic) force += m1*m2*(f1+f2)*dot(r,grad_w(r, h, norm_const))*v/(d1*d2*(dot(r,r)+EPSILON*h*h));
+
+                        //friction
+                        if((elastic || elastic2 || j<bc) && mat_id != mat_2) {
+                            vec4 r_inv = r / dot(r,r);
+                            vec4 normal_force = r_inv * dot(contact_force, r);
+                            vec4 tangent_vel = v - r_inv* dot(v, r);
+                            force += (f1 + f2) * length(normal_force) * normalize(tangent_vel);
+                        }
 
                         //artificial viscocity
                         if(j>=bc) force -= m1*m2*(

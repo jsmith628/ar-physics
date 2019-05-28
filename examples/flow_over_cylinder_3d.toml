@@ -1,5 +1,5 @@
 
-name = "3D test"
+name = "Flow over a cylinder in 3D"
 kernel_radius = 0.02
 particle_render_factor = 0.25
 lighting = true

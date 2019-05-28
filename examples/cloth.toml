@@ -1,5 +1,5 @@
 
-name = "Elastic Ball"
+name = "Cloth"
 lighting = true
 particle_render_factor = 0.33
 kernel_radius = 0.025

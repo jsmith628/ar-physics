@@ -1,6 +1,8 @@
 
 name = "3D test"
 kernel_radius = 0.02
+particle_render_factor = 0.25
+lighting = true
 gravity = 2.1
 time_step = 0.01
 subticks = 9
@@ -15,7 +17,8 @@ dim = [0.3,1.0,0.3]
   color = [0.0,0.0,0.0,0.01]
   packing = 0.5
   difference = [
-    {min = [-0.15,-0.6,-0.15], dim = [0.3,1.0,0.3], border = 0.04}
+    {min = [-0.15,-0.6,-0.15], dim = [0.3,1.0,0.3], border = 0.04},
+    {min = [-0.15,-0.5,-0.15], dim = [0.3,1.0,0.3]}
   ]
 
 
@@ -34,4 +37,4 @@ dim = [0.3,1.0,0.3]
   #color_low_density = [0.0,1.0,0.0,0.1]
   #color_high_density = [1.0,0.0,0.0,0.1]
 
-  region = {min = [-0.04,-0.2, -0.04], dim = [0.08,0.4, 0.08]}
+  region = {min = [-0.04,-0.2, -0.04], dim = [0.08,0.2, 0.08]}

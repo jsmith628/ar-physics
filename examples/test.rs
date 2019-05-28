@@ -53,6 +53,8 @@ glsl!{$
             // in mat4 strain;
 
             out vec4 frag_color;
+            out vec3 part_pos;
+            out vec3 look_basis[3];
 
             vec3 hsv2rgb(vec3 c) {
                 vec4 k = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
@@ -65,18 +67,20 @@ glsl!{$
                 float d0 = densities[mat];
 
                 float d = (den-d0)/(d0);
-                // float d = 10*determinant(mat2(strain[0].xy, strain[1].xy)) + den * 0.00000001*d0;
-                // float d = 100000*(strain[0].x*strain[1].y - strain[1].x*strain[0].y) + den * 0.00000001*d0;
-                // float d = (strain[0].x + strain[1].y) + den * 0.00000001*d0;
                 if(d<0){
                     frag_color = mix(c2[mat], c1[mat], -d/5);
                 }else{
                     frag_color = mix(c2[mat], c3[mat], d/5);
                 }
-                // frag_color = strain * frag_color;
-                // frag_color.a = 1;
 
-                // frag_color.xyz = hsv2rgb(vec3(5*atan(ref_pos.y+0.3,ref_pos.x)/(6.28), 1.0, 0.5));
+                part_pos = pos.xyz;
+
+                mat4 inv = inverse(trans);
+                for(uint i=0; i<3; i++){
+                    vec4 basis = vec4(0,0,0,0);
+                    basis[i] = i<2 ? 1 : -1;
+                    look_basis[i] = (inv * basis).xyz;
+                }
 
                 vec3 pos2 = (trans*(vec4(pos.xyz, 1)-vec4(0,0,0.25,0))).xyz+vec3(0,0,0.25);
                 gl_Position = vec4(pos2,pos2.z+1);
@@ -88,18 +92,40 @@ glsl!{$
             extern float normalization_constant(int n, float h);
             extern float kernel(vec4 r, float h, float k);
 
+            uniform float render_h;
+
+            uniform bool lighting;
+            uniform vec3 light;
+
             in vec4 frag_color;
+            in vec3 part_pos;
+            in vec3 look_basis[3];
 
             void main() {
-                float k = normalization_constant(3, 3);
-                vec2 d = (vec2(0.5,0.5) - gl_PointCoord)*2/gl_FragCoord.w;
+                vec2 p = (vec2(0.5,0.5) - gl_PointCoord)*2;
+                vec2 d = p/gl_FragCoord.w;
                 if(frag_color.a==0 || dot(d,d)>1.0){
-                    discard;
+                    if(lighting) {
+                        discard;
+                    } else {
+                        gl_FragColor = vec4(0.0,0.0,0.0,0.0);
+                    }
                 } else {
-                    gl_FragColor = vec4(
-                        frag_color.rgb,
-                        frag_color.a * kernel(vec4(d,0,0), 1.0, k)/kernel(vec4(0,0,0,0), 1.0, k)
-                    );
+                    if(lighting) {
+                        vec3 normal = p.x * look_basis[0] + p.y * look_basis[1];
+                        normal += sqrt(1.0 - normal.x*normal.x - normal.y*normal.y) * look_basis[2];
+                        vec3 surface_point = part_pos + (render_h/4)*normal;
+                        float diffuse = dot(normalize(light - surface_point), normal);
+
+                        gl_FragColor.rgb = mix(frag_color.rgb, vec3(1,1,1), max(diffuse*0.5,0));
+                        gl_FragColor.a = 1.0;
+                    } else {
+                        float k = normalization_constant(3, 3);
+                        gl_FragColor = vec4(
+                            frag_color.rgb,
+                            frag_color.a * kernel(vec4(d,0,0), 1.0, k)/kernel(vec4(0,0,0,0), 1.0, k)
+                        );
+                    }
                 }
             }
 
@@ -111,6 +137,10 @@ fn to_vec4(v: &Vec<Value>) -> vec4 {
     let mut p = vec4::default();
     for i in 0..4 { if i<v.len() {p[i] = v[i].as_float().unwrap() as f32;} }
     return p;
+}
+
+fn as_bool_or(val: &Value, name: &str, def: bool) -> bool {
+    val.as_table().unwrap().get(name).map(|v| v.as_bool().unwrap()).unwrap_or(def)
 }
 
 fn as_float_or(val: &Value, name: &str, def: f64) -> f64 {
@@ -186,6 +216,8 @@ fn main() {
         };
 
         let title = as_str_or(&config, "name", "Fluid Test");
+        let lighting = as_bool_or(&config, "lighting", config.as_table().unwrap().get("light_pos").is_some());
+
         let subticks = as_int_or(&config, "subticks", 1) as u32;
         let h = as_float_or(&config, "kernel_radius", 1.0/64.0) as f32;
         let dt = as_float_or(&config, "time_step", 0.01) as f32;
@@ -207,6 +239,10 @@ fn main() {
         };
         let mut context = Context::init(&gl_provider);
         let mut shader = ParticleShader::init(&gl_provider).unwrap();
+        *shader.render_h = h * as_float_or(&config, "particle_render_factor", 1.0) as f32;
+        let light_pos = as_vec4_or(&config, "light_pos", [-1.0,2.0,-1.0,0.0].into());
+        *shader.lighting = lighting.into();
+        *shader.light = [light_pos[0],light_pos[1],light_pos[2]].into();
 
         let fluids = {
 
@@ -392,9 +428,10 @@ fn main() {
         let window1 = Rc::new(RefCell::new(window));
         let window2 = window1.clone();
 
-        let (mut x, _) = window1.borrow().get_cursor_pos();
-        let mut pressed = false;
+        let (mut x, mut y) = window1.borrow().get_cursor_pos();
+        let (mut l_pressed, mut r_pressed) = (false, false);
         let mut rot = 0.0;
+        let (mut trans_x, mut trans_y) = (0.0,0.0);
 
         engine.add_component_from_fn(
             "renderer",
@@ -410,30 +447,42 @@ fn main() {
 
                 let w = world.borrow();
 
+                //note, each thing is a column, not row
                 let t = rot as f32;
                 *shader.trans = [
-                    [ t.cos(), 0.0, t.sin(), 0.0],
-                    [ 0.0,     1.0, 0.0,     0.0],
-                    [-t.sin(), 0.0, t.cos(), 0.0],
-                    [ 0.0,     0.0, 0.0,     1.0],
+                    [ t.cos(),         0.0,            t.sin(), 0.0],
+                    [ 0.0,             1.0,            0.0,     0.0],
+                    [-t.sin(),         0.0,            t.cos(), 0.0],
+                    [trans_x as f32, -trans_y as f32, 0.0,     1.0],
                 ].into();
 
 
 
-                let (new_x, _) = window1.borrow().get_cursor_pos();
-                pressed = match window1.borrow().get_mouse_button(glfw::MouseButton::Button1) {
+                let (new_x, new_y) = window1.borrow().get_cursor_pos();
+                l_pressed = match window1.borrow().get_mouse_button(glfw::MouseButton::Button1) {
                     glfw::Action::Press => true,
                     glfw::Action::Release => false,
-                    _ => pressed
+                    _ => l_pressed
                 };
 
-                if pressed { rot += (new_x - x)*0.01;}
+                r_pressed = match window1.borrow().get_mouse_button(glfw::MouseButton::Button2) {
+                    glfw::Action::Press => true,
+                    glfw::Action::Release => false,
+                    _ => r_pressed
+                };
+
+                if l_pressed { rot += (new_x - x)*0.01;}
+                if r_pressed {
+                    trans_x += (new_x - x)*0.005;
+                    trans_y += (new_y - y)*0.005;
+                }
                 x = new_x;
+                y = new_y;
 
                 unsafe {
                     gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
                     gl::ClearColor(1.0,1.0,1.0,0.0);
-                    gl::PointSize(s as f32 * w.kernel_radius());
+                    gl::PointSize(s as f32 * *shader.render_h);
                 }
 
                 // println!("{:?}",
@@ -456,16 +505,25 @@ fn main() {
             }
         );
 
+        let trans = !lighting;
+
         unsafe {
             gl::Viewport(80*2,0,win_h as i32,win_h as i32);
             gl::Disable(gl::CULL_FACE);
-            gl::Disable(gl::DEPTH_TEST);
 
             gl::Enable(0x8861);
             gl::Enable(gl::BLEND);
-            gl::BlendEquationSeparate(gl::FUNC_ADD, gl::FUNC_ADD);
-            gl::BlendFuncSeparate(gl::ONE_MINUS_DST_ALPHA, gl::ONE_MINUS_SRC_ALPHA, gl::DST_ALPHA, gl::SRC_ALPHA);
-            // gl::Disable(gl::BLEND);
+
+            if trans {
+                gl::Disable(gl::DEPTH_TEST);
+                gl::BlendEquationSeparate(gl::FUNC_ADD, gl::FUNC_ADD);
+                gl::BlendFuncSeparate(gl::ONE_MINUS_DST_ALPHA, gl::ONE_MINUS_SRC_ALPHA, gl::DST_ALPHA, gl::SRC_ALPHA);
+            } else {
+                gl::Enable(gl::DEPTH_TEST);
+                gl::BlendEquationSeparate(gl::FUNC_ADD, gl::FUNC_ADD);
+                gl::BlendFuncSeparate(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA, gl::ONE, gl::ZERO);
+            }
+
         }
 
         ::std::thread::sleep(::std::time::Duration::from_millis(1000));

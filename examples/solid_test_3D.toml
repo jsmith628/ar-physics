@@ -1,5 +1,7 @@
 
 name = "Elastic Ball"
+lighting = true
+particle_render_factor = 0.33
 kernel_radius = 0.025
 gravity = 5.0
 time_step = 0.001
@@ -16,7 +18,7 @@ dim = [0.4,1.0,0.4]
   normal_stiffness = -100000.0
   shear_stiffness = -200000.0
   shear_dampening = -10000.0
-  color = [0.0,0.0,1.0,0.1]
+  color = [0.0,0.0,1.0,1.0]
   # color_high_density = [1.0,0.0,0.0,0.1]
   # color_low_density = [0.0,1.0,0.0,0.1]
   region = {center = [-0.0,-0.25,-0.2], dim = [0.3,0.02,0.3]}

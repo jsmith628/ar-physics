@@ -388,7 +388,37 @@ fn main() {
                         mat.relaxation_time = as_float_or(&obj, "relaxation_time", 1.0) as f32;
                     }
 
-                    list.push(MaterialRegion::new(parse_region_from_mat(table), get_packing(&obj, h), mat));
+                    let region = parse_region_from_mat(table);
+
+                    let vel = as_vec4_or(&obj, "velocity", [0.0,0.0,0.0,0.0].into());
+                    let center = region.bound().center();
+
+                    let mut ang_vel = [0.0;6];
+                    if let Some(arr) = table.get("angular_velocity") {
+                        let mut i = 0;
+                        for val in arr.as_array().unwrap() {
+                            ang_vel[i] = val.as_float().unwrap() as f32;
+                            i += 1;
+                        }
+                    }
+
+                    list.push(
+                        MaterialRegion::with_vel(
+                            region,
+                            get_packing(&obj, h),
+                            mat,
+                            move |p| {
+                                let r = [p[0]-center[0], p[1]-center[1], p[2]-center[2], p[3]-center[3]];
+                                let w = ang_vel;
+                                [
+                                    w[1]*r[2] - w[2]*r[1] - w[3]*r[3] + vel[0],
+                                    w[2]*r[0] - w[0]*r[2] + w[4]*r[3] + vel[1],
+                                    w[0]*r[1] - w[1]*r[0] - w[5]*r[3] + vel[2],
+                                    w[3]*r[0] - w[4]*r[1] + w[5]*r[3] + vel[3],
+                                ].into()
+                            }
+                        )
+                    );
                     set_colors_and_den(&obj, &mut shader, mat_number, mat.target_den);
                     mat_number += 1;
                 }

@@ -267,7 +267,8 @@ pub type Materials = Buffer<[Material], CopyOnly>;
 pub struct MaterialRegion {
     pub region: Rc<Region>,
     pub packing_coefficient: f32,
-    pub mat: Material
+    pub mat: Material,
+    pub vel: Rc<Fn(vec4)->vec4>
 }
 
 impl MaterialRegion {
@@ -276,7 +277,17 @@ impl MaterialRegion {
         MaterialRegion {
             region: Rc::new(region),
             packing_coefficient: packing,
-            mat: mat
+            mat: mat,
+            vel: Rc::new(|_| vec4::default())
+        }
+    }
+
+    pub fn with_vel<R:Region, V:Fn(vec4)->vec4+'static>(region: R, packing: f32, mat: Material, v:V) -> Self {
+        MaterialRegion {
+            region: Rc::new(region),
+            packing_coefficient: packing,
+            mat: mat,
+            vel: Rc::new(v)
         }
     }
 
@@ -302,6 +313,7 @@ impl MaterialRegion {
                     num_in_box += 1;
                     if self.region.contains(pos) {
                         let mut particle = Particle::with_pos(pos.into());
+                        particle.vel = (self.vel)(particle.pos);
                         particle.den = start_density;
                         particle.mat = mat_id;
                         list.push(particle);

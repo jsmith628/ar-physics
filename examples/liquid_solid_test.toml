@@ -17,7 +17,8 @@ dim = [0.8,1.1]
   color = [0.0,0.0,1.0,1.0]
   color_low_density = [0.0,1.0,0.0,1.0]
   color_high_density = [1.0,0.0,0.0,1.0]
-  region = {min = [-0.36,-0.96], dim = [0.05,0.9]}
+  # region = {min = [-0.36,-0.96], dim = [0.1,0.9]}
+  region = {min = [-0.36,-0.963], dim = [0.72,0.1]}
 
 [objects.box]
   packing = 0.7
@@ -29,7 +30,8 @@ dim = [0.8,1.1]
   color = [0.0,1.0,0.0,1.0]
   color_low_density = [0.0,1.0,1.0,1.0]
   color_high_density = [1.0,1.0,0.0,1.0]
-  region = {min = [0.2,-0.96], dim = [0.07,0.07]}
+  # region = {min = [0.2,-0.96], dim = [0.07,0.07]}
+  region = {min = [0.0,-0.7], dim = [0.07,0.07]}
 
 
 [boundaries.border]

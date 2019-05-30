@@ -387,9 +387,10 @@ glsl!{$
                         }
 
                         vec4 contact_force = vec4(0,0,0,0);
+                        bool elastic2 = materials[mat_2].normal_stiffness!=0 || materials[mat_2].shear_stiffness!=0;
 
                         //hourglass restoring force and contact forces
-                        if(elastic) {
+                        if(elastic || elastic2) {
                             vec4 dx = r;
                             vec4 dX = particles[id2].ref_pos - particles[id].ref_pos;
                             float contact = h;
@@ -421,8 +422,6 @@ glsl!{$
                             }
 
                         }
-
-                        bool elastic2 = materials[mat_2].normal_stiffness!=0 || materials[mat_2].shear_stiffness!=0;
 
                         //pressure force
                         if(!elastic || !elastic2) {

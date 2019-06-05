@@ -9,8 +9,8 @@ subticks = 9
 artificial_viscocity = 500.0
 integrator = "rk4"
 
-min = [-0.15,-0.6,-0.15]
-dim = [0.3,1.0,0.3]
+min = [-1.0,-1.0,-1.0]
+dim = [2.0,2.0,2.0]
 
 [boundaries.border]
   friction = 0.0

@@ -9,8 +9,8 @@ subticks = 4
 artificial_viscocity = 0.0
 integrator = "Verlet"
 
-min = [-0.2,-1.0,-0.2]
-dim = [0.4,1.0,0.4]
+min = [-1.0,-1.0,-1.0]
+dim = [2.0,2.0,2.0]
 
 [objects.ball]
   packing = 0.7
@@ -21,14 +21,14 @@ dim = [0.4,1.0,0.4]
   color = [0.0,0.0,1.0,1.0]
   # color_high_density = [1.0,0.0,0.0,0.1]
   # color_low_density = [0.0,1.0,0.0,0.1]
-  region = {center = [-0.0,-0.2,-0.2], dim = [0.07,0.07,0.07]}
+  region = {center = [-0.0,-0.2,-0.3], dim = [0.07,0.07,0.07]}
 
 
 [boundaries.floor]
   packing = 0.5
   friction = 1.0
   color = [0.0,0.0,0.0,0.01]
-  region = {min = [-0.2,-0.6,-0.4], dim = [0.4,0.06,0.4]}
+  region = {min = [-0.2,-0.6,-0.5], dim = [0.4,0.06,0.4]}
 
 # [boundaries.circle]
 #   packing = 0.5

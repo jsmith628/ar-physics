@@ -5,12 +5,12 @@ particle_render_factor = 0.33
 kernel_radius = 0.025
 gravity = 5.0
 time_step = 0.001
-subticks = 4
+subticks = 3
 artificial_viscocity = 0.0
 integrator = "Verlet"
 
-min = [-0.2,-1.0,-0.2]
-dim = [0.4,1.0,0.4]
+min = [-0.3,-1.0,-0.5]
+dim = [0.6,2.0,1.0]
 
 [objects.ball]
   packing = 0.7

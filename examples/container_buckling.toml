@@ -1,0 +1,58 @@
+
+name = "Buckling Container"
+lighting = true
+particle_render_factor = 0.7
+kernel_radius = 0.02
+gravity = 10.0
+time_step = 0.001
+subticks = 10
+artificial_viscocity = 0.0
+integrator = "Verlet"
+
+min = [-1.0,-1.0,-1.0]
+dim = [2.0,2.0,2.0]
+
+[objects.container]
+  packing = 0.7
+  density = 1.0
+  normal_stiffness = -6000000.0
+  shear_stiffness = -200000000.0
+  normal_dampening = -10000.0
+  shear_dampening = -10.0
+  color = [0.0,0.0,1.0,1.0]
+  velocity = [0.0,-5.0]
+  # color_high_density = [1.0,0.0,0.0,0.1]
+  # color_low_density = [0.0,1.0,0.0,0.1]
+  region = {center = [-0.0,-0.1,-0.3], dim = [0.09,0.13,0.09], border = 0.015}
+  yield_strength = 50000000.0
+  relaxation_time = 20000.0
+  work_hardening = 50000000.0
+
+# [objects.ball]
+#   packing = 0.7
+#   density = 1.0
+#   normal_stiffness = -6000000.0
+#   shear_stiffness = -200000000.0
+#   normal_dampening = -100.0
+#   shear_dampening = -100.0
+#   color = [0.0,0.0,1.0,1.0]
+#   # velocity = [0.0,-4.0]
+#   # color_high_density = [1.0,0.0,0.0,0.1]
+#   # color_low_density = [0.0,1.0,0.0,0.1]
+#   region = {center = [0.05,0.05,-0.3], diameters = [0.06,0.06,0.06]}
+#   yield_strength = 50000000.0
+#   relaxation_time = 20000.0
+#   # work_hardening = 100000000.0
+
+
+[boundaries.floor]
+  packing = 0.5
+  friction = 1.0
+  color = [0.0,0.0,0.0,0.01]
+  region = {min = [-0.4,-0.5,-0.7], dim = [0.8,0.06,0.8]}
+
+# [boundaries.circle]
+#   packing = 0.5
+#   friction = 1.0
+#   color = [0.0,0.0,0.0,0.05]
+#   region = {center = [0.05,-0.35,-0.2], diameters = [0.06,0.06,0.06]}

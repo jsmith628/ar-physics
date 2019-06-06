@@ -1,7 +1,7 @@
 
 name = "Elastic Ball"
 lighting = true
-particle_render_factor = 0.33
+particle_render_factor = 0.7
 kernel_radius = 0.02
 gravity = 5.0
 time_step = 0.001

@@ -13,7 +13,7 @@ extern crate numerical_integration;
 use std::rc::Rc;
 use std::cell::RefCell;
 use gl_struct::*;
-use gl_struct::glsl_type::vec4;
+use gl_struct::glsl_type::{vec4, vec3};
 use toml::Value;
 
 use ar_physics::soft_body::*;
@@ -55,6 +55,7 @@ glsl!{$
             out vec4 frag_color;
             out vec3 part_pos;
             out vec3 look_basis[3];
+            out float depth;
 
             vec3 hsv2rgb(vec3 c) {
                 vec4 k = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
@@ -75,15 +76,18 @@ glsl!{$
 
                 part_pos = pos.xyz;
 
-                mat4 inv = inverse(trans);
+                // mat4 inv = inverse(trans);
+                mat4 inv = mat4(vec4(1,0,0,0),vec4(0,1,0,0),vec4(0,0,1,0),vec4(0,0,0,1));
                 for(uint i=0; i<3; i++){
                     vec4 basis = vec4(0,0,0,0);
                     basis[i] = i<2 ? 1 : -1;
                     look_basis[i] = (inv * basis).xyz;
                 }
 
-                vec3 pos2 = (trans*(vec4(pos.xyz, 1)-vec4(0,0,0.25,0))).xyz+vec3(0,0,0.25);
+                vec3 pos2 = (trans*(vec4(pos.xyz, 1)-vec4(0,0,0.0,0))).xyz+vec3(0,0,0.0);
+                part_pos = pos2.xyz;
                 gl_Position = vec4(pos2,pos2.z+1);
+                depth = pos2.z+1;
             }
 
         @Fragment
@@ -96,28 +100,47 @@ glsl!{$
 
             uniform bool lighting;
             uniform vec3 light;
+            uniform vec3 light_color;
+            uniform float ambient_brightness;
+            uniform float diffuse_brightness;
+            uniform float specular_brightness;
 
             in vec4 frag_color;
             in vec3 part_pos;
             in vec3 look_basis[3];
+            in float depth;
 
             void main() {
-                vec2 p = (vec2(0.5,0.5) - gl_PointCoord)*2;
-                vec2 d = p/gl_FragCoord.w;
+                const float s = 2;
+
+                vec2 p = (gl_PointCoord - vec2(0.5,0.5))*2;
+                p.y *= -1;
+                vec2 d = p * 2 * depth;
+                // vec2 d = p;
                 if(frag_color.a==0 || dot(d,d)>1.0){
-                    if(lighting) {
-                        discard;
-                    } else {
-                        gl_FragColor = vec4(0.0,0.0,0.0,0.0);
-                    }
+                    discard;
                 } else {
                     if(lighting) {
-                        vec3 normal = p.x * look_basis[0] + p.y * look_basis[1];
+                        vec3 normal = d.x * look_basis[0] + d.y * look_basis[1];
                         normal += sqrt(1.0 - normal.x*normal.x - normal.y*normal.y) * look_basis[2];
-                        vec3 surface_point = part_pos + (render_h/4)*normal;
-                        float diffuse = dot(normalize(light - surface_point), normal);
+                        vec3 surface_point = part_pos + (render_h)*(normal);
 
-                        gl_FragColor.rgb = mix(frag_color.rgb, vec3(1,1,1), max(diffuse*0.5,0));
+                        vec3 light_vec = light - surface_point;
+                        float l = inversesqrt(dot(light_vec,light_vec));
+                        light_vec = light_vec * (l*l*l);
+
+                        float diffuse = dot(light_vec, normal);
+                        float spec = max(20*dot(-look_basis[2], reflect(light_vec, normal)),0);
+                        spec *= spec * spec;
+
+                        gl_FragColor.rgb = frag_color.rgb*ambient_brightness;
+                        gl_FragColor.rgb += diffuse*diffuse_brightness*light_color;
+                        // gl_FragColor.rgb = mix(
+                        //     ,
+                        //     diffuse_color,
+                        //     max(diffuse*diffuse_brightness,0)
+                        // );
+                        gl_FragColor.rgb += light_color * spec * specular_brightness;
                         gl_FragColor.a = 1.0;
                     } else {
                         float k = normalization_constant(3, 3);
@@ -161,6 +184,15 @@ fn as_string_or(val: &Value, name: &str, def: String) -> String {
 
 fn as_vec4_or(val: &Value, name: &str, def: vec4) -> vec4 {
     val.as_table().unwrap().get(name).map(|v| to_vec4(&v.as_array().unwrap())).unwrap_or(def)
+}
+
+fn as_vec3_or(val: &Value, name: &str, def: vec3) -> vec3 {
+    val.as_table().unwrap().get(name).map(
+        |v| {
+            let v4 = to_vec4(&v.as_array().unwrap());
+            [v4[0],v4[1],v4[2]].into()
+        }
+    ).unwrap_or(def)
 }
 
 fn main() {
@@ -231,7 +263,6 @@ fn main() {
         let mut window = glfw.create_window(win_w, win_h, title, glfw::WindowMode::Windowed).unwrap().0;
 
         glfw::Context::make_current(&mut window);
-        window.set_key_polling(true);
         glfw.set_swap_interval(glfw::SwapInterval::None);
 
         let gl_provider = unsafe {
@@ -240,9 +271,12 @@ fn main() {
         let mut context = Context::init(&gl_provider);
         let mut shader = ParticleShader::init(&gl_provider).unwrap();
         *shader.render_h = h * as_float_or(&config, "particle_render_factor", 1.0) as f32;
-        let light_pos = as_vec4_or(&config, "light_pos", [-1.0,2.0,-1.0,0.0].into());
         *shader.lighting = lighting.into();
-        *shader.light = [light_pos[0],light_pos[1],light_pos[2]].into();
+        *shader.light = as_vec3_or(&config, "light_pos", [-3.0,3.0,-3.0].into());
+        *shader.ambient_brightness = as_float_or(&config, "ambient_brightness", 1.0) as f32;
+        *shader.diffuse_brightness = as_float_or(&config, "diffuse_brightness", 10.0) as f32;
+        *shader.specular_brightness = as_float_or(&config, "specular_brightness", 0.0) as f32;
+        *shader.light_color = as_vec3_or(&config, "light_color", [1.0,1.0,1.0].into());
 
         let fluids = {
 
@@ -459,9 +493,10 @@ fn main() {
         let window2 = window1.clone();
 
         let (mut x, mut y) = window1.borrow().get_cursor_pos();
-        let (mut l_pressed, mut r_pressed) = (false, false);
-        let mut rot = 0.0;
+        let (mut l_pressed, mut m_pressed, mut r_pressed) = (false, false, false);
         let (mut trans_x, mut trans_y) = (0.0,0.0);
+        let mut scale = 1.0;
+        let mut rot = 0.0;
 
         engine.add_component_from_fn(
             "renderer",
@@ -478,15 +513,16 @@ fn main() {
                 let w = world.borrow();
 
                 //note, each thing is a column, not row
-                let t = rot as f32;
-                *shader.trans = [
-                    [ t.cos(),         0.0,            t.sin(), 0.0],
-                    [ 0.0,             1.0,            0.0,     0.0],
-                    [-t.sin(),         0.0,            t.cos(), 0.0],
-                    [trans_x as f32, -trans_y as f32, 0.0,     1.0],
-                ].into();
-
-
+                {
+                    // let s = scale as f32;
+                    let t = rot as f32;
+                    *shader.trans = [
+                        [t.cos(),        0.0,           t.sin(),   0.0],
+                        [ 0.0,             1.0,         0.0,       0.0],
+                        [-t.sin(),         0.0,           t.cos(), 0.0],
+                        [trans_x as f32, -trans_y as f32, -scale as f32+1.0,       1.0],
+                    ].into();
+                }
 
                 let (new_x, new_y) = window1.borrow().get_cursor_pos();
                 l_pressed = match window1.borrow().get_mouse_button(glfw::MouseButton::Button1) {
@@ -501,7 +537,14 @@ fn main() {
                     _ => r_pressed
                 };
 
-                if l_pressed { rot += (new_x - x)*0.01;}
+                m_pressed = match window1.borrow().get_mouse_button(glfw::MouseButton::Button3) {
+                    glfw::Action::Press => true,
+                    glfw::Action::Release => false,
+                    _ => m_pressed
+                };
+
+                if l_pressed {rot += (new_x - x)*0.01;}
+                if m_pressed {scale += (new_x - x)*0.01;}
                 if r_pressed {
                     trans_x += (new_x - x)*0.005;
                     trans_y += (new_y - y)*0.005;
@@ -512,7 +555,7 @@ fn main() {
                 unsafe {
                     gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
                     gl::ClearColor(1.0,1.0,1.0,0.0);
-                    gl::PointSize(s as f32 * *shader.render_h);
+                    gl::PointSize(s as f32 * *shader.render_h * 1.0);
                 }
 
                 // println!("{:?}",

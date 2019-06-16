@@ -4,7 +4,7 @@ use std::cell::RefCell;
 use std::hash::{Hash,Hasher};
 
 use maths_traits::algebra::*;
-use maths_traits::analysis::metric::*;
+use maths_traits::analysis::metric::{InnerProductSpace};
 use free_algebra::*;
 
 use crate::soft_body::*;

@@ -275,10 +275,11 @@ gen_lin_comb!($ lin_comb_5 sum_5 (r1 p1 _p1) (r2 p2 _p2) (r3 p3 _p3) (r4 p4 _p4)
 
 use super::*;
 use std::rc::Rc;
+use maths_traits::analysis::ComplexSubset;
 
 pub(self) use super::ParticleBuffer;
 pub(self) use super::Particle;
-pub(self) fn units(p: GLuint) -> GLuint { (p as GLfloat / 128.0).ceil() as GLuint }
+pub(self) fn units(p: GLuint) -> GLuint { ComplexSubset::ceil(p as GLfloat / 128.0) as GLuint }
 
 pub(self) type Term<'a> = (GLfloat, &'a ParticleBuffer);
 pub(self) type OwnedTerm = (GLfloat, ParticleBuffer);
@@ -326,7 +327,7 @@ impl ArithShaders {
         #[allow(mutable_transmutes)]
         unsafe {
             let len = buf1.len().min(buf2.len());
-            let mut results = Buffer::<[_],Read>::uninitialized(&buf1.gl_provider(), (len as GLfloat / 64.0).ceil() as usize);
+            let mut results = Buffer::<[_],Read>::uninitialized(&buf1.gl_provider(), ComplexSubset::ceil(len as GLfloat / 64.0) as usize);
             let ub1 = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(buf1);
             let ub2 = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(buf2);
 

@@ -9,8 +9,8 @@ subticks = 4
 artificial_viscocity = 0.0
 integrator = "Verlet"
 
-min = [-1.0,-1.0,-1.0]
-dim = [2.0,2.0,2.0]
+min = [-0.3,-0.6,-0.5]
+dim = [1.0,1.0,1.0]
 
 [objects.ball]
   packing = 0.7

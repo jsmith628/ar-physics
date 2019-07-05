@@ -32,6 +32,8 @@ glsl! {$
             }
     }
 
+    const GRP_SIZE: u32 = 128;
+
     mod fill_buckets {
         @Rust
             use super::{Bucket, Index, bucket_index};
@@ -47,7 +49,7 @@ glsl! {$
             #define REFERENCE 1
             #define POSITION 2
 
-            layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+            layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
             extern struct AABB;
             extern struct Particle;
@@ -109,7 +111,7 @@ glsl! {$
 
         @Compute
             #version 460
-            layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+            layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
             extern struct AABB;
             extern struct Bucket;
@@ -124,6 +126,7 @@ glsl! {$
 
             void main() {
                 uint id = gl_GlobalInvocationID.x;
+                if(id > buckets.length()) return;
                 uint count = buckets[id].count.length();
                 for(uint i=mode; i<count; i++) {
                     buckets[id].count[i] = 0;
@@ -228,7 +231,7 @@ impl NeighborList {
         #[allow(mutable_transmutes)]
         let ub: &mut ParticleBuffer = unsafe { ::std::mem::transmute(&particles.buf) };
 
-        #[inline] fn units(p:u32) -> u32 { (p as f32 / 1.0).ceil() as u32}
+        #[inline] fn units(p:u32) -> u32 { (p as f32 / GRP_SIZE as f32).ceil() as u32}
 
         if !Weak::ptr_eq(&self.boundary, &Rc::downgrade(&particles.boundary)) {
 
@@ -240,7 +243,7 @@ impl NeighborList {
             self.boundary = Rc::downgrade(&particles.boundary);
 
             *self.bucket_reset.mode = 0;
-            self.bucket_reset.compute(self.bucket_count() as GLuint, 1, 1, &mut self.buckets);
+            self.bucket_reset.compute(units(self.bucket_count() as GLuint), 1, 1, &mut self.buckets);
 
             *self.bucket_fill.mode = 0;
             self.bucket_fill.compute(
@@ -251,7 +254,7 @@ impl NeighborList {
 
         if reset {
             *self.bucket_reset.mode = 1;
-            self.bucket_reset.compute(self.bucket_count() as GLuint, 1, 1, &mut self.buckets);
+            self.bucket_reset.compute(units(self.bucket_count() as GLuint), 1, 1, &mut self.buckets);
 
             *self.bucket_fill.mode = 1;
             self.bucket_fill.compute(
@@ -259,11 +262,9 @@ impl NeighborList {
                 ub, self.indices.as_mut().unwrap(), &mut self.buckets
             );
 
-        }
-
-        if !reset {
+        } else {
             *self.bucket_reset.mode = 2;
-            self.bucket_reset.compute(self.bucket_count() as GLuint, 1, 1, &mut self.buckets);
+            self.bucket_reset.compute(units(self.bucket_count() as GLuint), 1, 1, &mut self.buckets);
         }
 
         *self.bucket_fill.mode = 2;

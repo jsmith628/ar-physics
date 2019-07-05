@@ -265,10 +265,10 @@ pub type Materials = Buffer<[Material], CopyOnly>;
 
 #[derive(Clone)]
 pub struct MaterialRegion {
-    pub region: Rc<Region>,
+    pub region: Rc<dyn Region>,
     pub packing_coefficient: f32,
     pub mat: Material,
-    pub vel: Rc<Fn(vec4)->vec4>
+    pub vel: Rc<dyn Fn(vec4)->vec4>
 }
 
 impl MaterialRegion {

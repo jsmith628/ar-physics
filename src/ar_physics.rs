@@ -1,7 +1,6 @@
 #![recursion_limit="65536"]
 #![feature(weak_ptr_eq)]
 #![feature(trivial_bounds)]
-#![feature(type_alias_enum_variants)]
 #![feature(allocator_api)]
 
 

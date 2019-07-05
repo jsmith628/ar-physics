@@ -554,7 +554,6 @@ glsl!{$
         @Rust
             use super::*;
             use super::{Index};
-            use super::compute_force::strain_measure;
             use super::kernel::*;
 
         @Compute
@@ -785,7 +784,7 @@ glsl!{$
 
 pub struct FluidSim {
     //integration
-    integrator: Box<VelIntegrates<f32, ParticleState>>,
+    integrator: Box<dyn VelIntegrates<f32, ParticleState>>,
     timestep: f32,
     subticks: uint,
 
@@ -820,7 +819,7 @@ impl FluidSim {
         gl: &GLProvider,
         fluids: &[MaterialRegion],
         bounds: AABB, kernel_rad: f32,
-        integrator: Box<VelIntegrates<f32, ParticleState>>,
+        integrator: Box<dyn VelIntegrates<f32, ParticleState>>,
         timestep: f32, subticks: uint,
         gravity: f32, artificial_viscocity: f32,
     ) -> Result<Self, GLError> {

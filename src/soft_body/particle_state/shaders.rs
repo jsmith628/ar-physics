@@ -134,7 +134,7 @@ glsl!{$
             use std::cell::RefCell;
 
             impl Program {
-                pub(super) fn into_closure(self) -> Box<for<'a> Fn(&'a Term<'a>) -> ParticleBuffer> {
+                pub(super) fn into_closure(self) -> Box<dyn for<'a> Fn(&'a Term<'a>) -> ParticleBuffer> {
                     let shader = RefCell::new(self);
                     Box::new(
                         move |(r, p)| {
@@ -180,7 +180,7 @@ glsl!{$
             use std::cell::RefCell;
 
             impl Program {
-                pub(super) fn into_closure(self) -> Box<Fn(GLfloat, ParticleBuffer) -> ParticleBuffer> {
+                pub(super) fn into_closure(self) -> Box<dyn Fn(GLfloat, ParticleBuffer) -> ParticleBuffer> {
                     let shader = RefCell::new(self);
                     Box::new(
                         move |r, mut p| {
@@ -283,15 +283,15 @@ pub(self) fn units(p: GLuint) -> GLuint { ComplexSubset::ceil(p as GLfloat / 128
 
 pub(self) type Term<'a> = (GLfloat, &'a ParticleBuffer);
 pub(self) type OwnedTerm = (GLfloat, ParticleBuffer);
-pub(self) type LCClosure = Box<for<'a> Fn(&'a [Term]) -> ParticleBuffer>;
-pub(self) type SumClosure = Box<for<'a> Fn(GLfloat, ParticleBuffer, &'a [Term<'a>]) -> ParticleBuffer>;
+pub(self) type LCClosure = Box<dyn for<'a> Fn(&'a [Term]) -> ParticleBuffer>;
+pub(self) type SumClosure = Box<dyn for<'a> Fn(GLfloat, ParticleBuffer, &'a [Term<'a>]) -> ParticleBuffer>;
 
 #[derive(Clone)]
 pub struct ArithShaders {
     lc: Rc<[LCClosure]>,
     sum: Rc<[SumClosure]>,
-    pub vel: Rc<for<'a> Fn(&'a Term<'a>) -> ParticleBuffer>,
-    pub vel_mut: Rc<Fn(GLfloat, ParticleBuffer) -> ParticleBuffer>,
+    pub vel: Rc<dyn for<'a> Fn(&'a Term<'a>) -> ParticleBuffer>,
+    pub vel_mut: Rc<dyn Fn(GLfloat, ParticleBuffer) -> ParticleBuffer>,
     dot: Rc<dot::Program>,
 }
 
@@ -338,6 +338,7 @@ impl ArithShaders {
         }
     }
 
+    #[allow(dead_code)]
     pub fn reduce<'a>(&self, mut owned: Vec<OwnedTerm>, borrowed: Vec<Term<'a>>) -> Option<ParticleBuffer> {
         if owned.len()==0 { return self.reduce_ref(borrowed); }
         if borrowed.len()==0 && owned.len()==1 && owned[0].0==1.0 {

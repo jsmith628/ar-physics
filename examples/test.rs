@@ -282,9 +282,9 @@ fn main() {
 
             use toml::value::{Table, Array};
 
-            fn parse_region_from_mat(region: &Table) -> Rc<Region> {
+            fn parse_region_from_mat(region: &Table) -> Rc<dyn Region> {
 
-                type Reg = Rc<Region>;
+                type Reg = Rc<dyn Region>;
 
                 fn fold_array<F:Fn(Reg,Reg) -> Reg>(arr: &Array, f:F) -> Reg {
                     let mut iter = arr.into_iter().map(|s| parse_region(s.as_table().unwrap()));
@@ -461,7 +461,7 @@ fn main() {
             list
         };
 
-        let integrator: Box<VelIntegrates<_, _>> = {
+        let integrator: Box<dyn VelIntegrates<_, _>> = {
             match as_str_or(&config, "integrator", "verlet").to_lowercase().as_ref() {
                 "verlet" => Box::new(VelocityVerlet),
                 "euler" => Box::new(EULER),

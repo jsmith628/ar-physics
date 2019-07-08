@@ -9,8 +9,10 @@ use free_algebra::*;
 
 use crate::soft_body::*;
 use self::shaders::*;
+use self::buf_vec::*;
 
 mod shaders;
+pub mod buf_vec;
 
 glsl!{$
     pub use self::types::*;

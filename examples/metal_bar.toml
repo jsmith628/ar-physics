@@ -3,12 +3,12 @@ name = "Metal Bar"
 kernel_radius = 0.015
 gravity = 5.0
 time_step = 0.001
-subticks = 15
+subticks = 10
 artificial_viscocity = 0.0
 integrator = "RK4"
 
 min = [-0.2,-1.0]
-dim = [0.4,2.0]
+dim = [0.4,1.5]
 
 [objects.bar]
   packing = 0.7

@@ -205,8 +205,10 @@ glsl!{$
             void main() {
                 uint id = gl_GlobalInvocationID.x;
                 part[id].den = 0.0;
+                part[id].ref_pos = vec4(0.0,0.0,0.0,0.0);
                 part[id].pos = r1*part[id].vel;
                 part[id].vel = vec4(0.0,0.0,0.0,0.0);
+                part[id].stress = mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0));
             }
     }
 

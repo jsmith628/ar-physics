@@ -217,30 +217,30 @@ impl NeighborList {
 
         //reset the array-list counts for each bucket and make sure the indices list is the right size
         let reset = match &self.indices {
-            Some(l) => l.len() < particles.buf.len(),
+            Some(l) => l.len() < particles.particles().len(),
             None => true
         };
         if reset {
             self.indices = unsafe {
-                Some(Buffer::<[_],_>::uninitialized(&GLProvider::get_current().unwrap(), particles.buf.len().max(1)))
+                Some(Buffer::<[_],_>::uninitialized(&GLProvider::get_current().unwrap(), particles.particles().len().max(1)))
             };
         }
 
         //NOTE: we know for CERTAIN that this buffer wont be modified by the shader,
         //so against all warnings, we are going to transmute them to mutable
         #[allow(mutable_transmutes)]
-        let ub: &mut ParticleBuffer = unsafe { ::std::mem::transmute(&particles.buf) };
+        let ub: &mut ParticleBuffer = unsafe { ::std::mem::transmute(particles.particles()) };
 
         #[inline] fn units(p:u32) -> u32 { (p as f32 / GRP_SIZE as f32).ceil() as u32}
 
-        if !Weak::ptr_eq(&self.boundary, &Rc::downgrade(&particles.boundary)) {
+        if !self.boundary.upgrade().map_or(false, |b| &*b as *const ParticleBuffer == particles.boundary() as *const ParticleBuffer) {
 
             #[allow(mutable_transmutes)]
             let ub_boundary = unsafe {
-                ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(particles.boundary.as_ref())
+                ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(particles.boundary())
             };
 
-            self.boundary = Rc::downgrade(&particles.boundary);
+            self.boundary = particles.boundary_weak();
 
             *self.bucket_reset.mode = 0;
             self.bucket_reset.compute(units(self.bucket_count() as GLuint), 1, 1, &mut self.buckets);

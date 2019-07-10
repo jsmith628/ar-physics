@@ -1,5 +1,5 @@
 
-use std::rc::Rc;
+use std::rc::*;
 use std::cell::RefCell;
 use std::hash::{Hash,Hasher};
 
@@ -56,8 +56,8 @@ pub type ParticleBuffer = Buffer<[Particle], Read>;
 
 #[derive(Clone)]
 pub struct Particles {
-    pub buf: ParticleBuffer,
-    pub boundary: Rc<ParticleBuffer>
+    buf: ParticleBuffer,
+    boundary: Rc<ParticleBuffer>
 }
 
 impl Particles {
@@ -74,6 +74,12 @@ impl Particles {
             boundary: self.boundary.clone()
         }
     }
+
+    pub fn boundary(&self) -> &ParticleBuffer { &self.boundary }
+    pub fn boundary_weak(&self) -> Weak<ParticleBuffer> {Rc::downgrade(&self.boundary.clone())}
+    pub fn particles(&self) -> &ParticleBuffer { &self.buf }
+    pub fn particles_mut(&mut self) -> &mut ParticleBuffer { &mut self.buf }
+
 }
 
 

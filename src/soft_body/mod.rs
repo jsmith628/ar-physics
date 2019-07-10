@@ -744,12 +744,12 @@ glsl!{$
                 //so against all warnings, we are going to transmute them to mutable
 
                 let ub_mat: &mut Buffer<[Material], Read> = ::std::mem::transmute(materials);
-                let ub = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(&p.buf);
-                let ub_bound = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(&p.boundary);
+                let ub = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(&p.particles());
+                let ub_bound = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(&p.boundary());
 
                 prof.new_segment("Forces".to_owned());
 
-                let mut strains = Buffer::<[[mat4;3]],Read>::uninitialized(&p.buf.gl_provider(), p.buf.len());
+                let mut strains = Buffer::<[[mat4;3]],Read>::uninitialized(&p.particles().gl_provider(), p.particles().len());
                 strain.compute(strains.len() as u32, 1, 1, ub, ub_mat, indices, &mut strains, buckets);
 
                 // gl::Finish();
@@ -766,8 +766,8 @@ glsl!{$
                 // gl::Finish();
 
                 force.compute(
-                    p.buf.len() as u32, 1, 1,
-                    ub, ub_bound, &mut dest.buf,
+                    p.particles().len() as u32, 1, 1,
+                    ub, ub_bound, dest.particles_mut(),
                     ub_mat, &mut strains,
                     indices, buckets
                 );

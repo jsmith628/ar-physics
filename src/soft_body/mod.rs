@@ -739,17 +739,18 @@ glsl!{$
 
 
                 let mut dest = p.mirror();
+                let particles = p.particles();
 
                 //NOTE: we know for CERTAIN that neither of these are modified by the shader,
                 //so against all warnings, we are going to transmute them to mutable
 
                 let ub_mat: &mut Buffer<[Material], Read> = ::std::mem::transmute(materials);
-                let ub = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(&p.particles());
-                let ub_bound = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(&p.boundary());
+                let ub = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(&*particles);
+                let ub_bound = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(p.boundary());
 
                 prof.new_segment("Forces".to_owned());
 
-                let mut strains = Buffer::<[[mat4;3]],Read>::uninitialized(&p.particles().gl_provider(), p.particles().len());
+                let mut strains = Buffer::<[[mat4;3]],Read>::uninitialized(&particles.gl_provider(), particles.len());
                 strain.compute(strains.len() as u32, 1, 1, ub, ub_mat, indices, &mut strains, buckets);
 
                 // gl::Finish();
@@ -767,7 +768,7 @@ glsl!{$
 
                 force.compute(
                     p.particles().len() as u32, 1, 1,
-                    ub, ub_bound, dest.particles_mut(),
+                    ub, ub_bound, &mut *dest.particles_mut(),
                     ub_mat, &mut strains,
                     indices, buckets
                 );

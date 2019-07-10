@@ -11,7 +11,7 @@ use crate::soft_body::*;
 use self::particles::*;
 use self::buf_vec::*;
 
-pub use particles::{Particles, ParticleBuffer};
+pub use particles::{Particles, ParticleBuffer, ParticleVec};
 
 mod particles;
 pub mod buf_vec;

@@ -444,7 +444,8 @@ impl ArithShaders {
 }
 
 
-pub type ParticleBuffer = Buffer<[Particle], Read>;
+pub type ParticleBuffer = Buffer<[Particle], ReadWrite>;
+pub type ParticleVec = BufVec<[Particle]>;
 
 #[derive(Clone)]
 pub struct Particles {
@@ -455,8 +456,8 @@ pub struct Particles {
 impl Particles {
     pub fn new(gl: &GLProvider, particles: Box<[Particle]>, boundary: Box<[Particle]>) -> Self {
         Particles{
-            buf: Buffer::readonly_from(gl, particles),
-            boundary: Rc::new(Buffer::readonly_from(gl, boundary))
+            buf: Buffer::from_box(gl, particles),
+            boundary: Rc::new(Buffer::from_box(gl, boundary))
         }
     }
 

@@ -8,10 +8,12 @@ use maths_traits::analysis::metric::{InnerProductSpace};
 use free_algebra::*;
 
 use crate::soft_body::*;
-use self::shaders::*;
+use self::particles::*;
 use self::buf_vec::*;
 
-mod shaders;
+pub use particles::{Particles, ParticleBuffer};
+
+mod particles;
 pub mod buf_vec;
 
 glsl!{$
@@ -52,37 +54,6 @@ glsl!{$
 
 }
 
-pub type ParticleBuffer = Buffer<[Particle], Read>;
-
-#[derive(Clone)]
-pub struct Particles {
-    buf: ParticleBuffer,
-    boundary: Rc<ParticleBuffer>
-}
-
-impl Particles {
-    pub fn new(gl: &GLProvider, particles: Box<[Particle]>, boundary: Box<[Particle]>) -> Self {
-        Particles{
-            buf: Buffer::readonly_from(gl, particles),
-            boundary: Rc::new(Buffer::readonly_from(gl, boundary))
-        }
-    }
-
-    pub unsafe fn mirror(&self) -> Self {
-        Particles {
-            buf: Buffer::<[_],_>::uninitialized(&self.buf.gl_provider(), self.buf.len()),
-            boundary: self.boundary.clone()
-        }
-    }
-
-    pub fn boundary(&self) -> &ParticleBuffer { &self.boundary }
-    pub fn boundary_weak(&self) -> Weak<ParticleBuffer> {Rc::downgrade(&self.boundary.clone())}
-    pub fn particles(&self) -> &ParticleBuffer { &self.buf }
-    pub fn particles_mut(&mut self) -> &mut ParticleBuffer { &mut self.buf }
-
-}
-
-
 #[derive(Clone)]
 struct Term(Rc<Particles>);
 impl Eq for Term {}
@@ -104,7 +75,7 @@ impl ParticleState {
 
     pub fn new(particles: Particles) -> Self {
         ParticleState {
-            arith: Some(ArithShaders::new(&particles.buf.gl_provider()).unwrap()),
+            arith: Some(ArithShaders::new(&particles.particles().gl_provider()).unwrap()),
             terms: RefCell::new(Term(Rc::new(particles)).into()),
         }
     }
@@ -122,27 +93,20 @@ impl ParticleState {
         let arith = self.arith.as_ref().unwrap();
         let mut lc = self.terms.borrow_mut();
 
-        // print!("{}: ", lc.terms());
-        let arr = lc.as_ref().iter().map(
-            |(p,r)| (*r,&p.0.buf)
-        ).collect::<Vec<_>>();
-        // println!();
+        let arr = lc.as_ref().iter().map(|(p,r)| (*r,&*p.0)).collect::<Vec<_>>();
 
         if arr.len()==1 && arr[0].0==1.0 {return};
 
         let prof = unsafe { crate::PROFILER.as_mut().unwrap() };
         prof.new_segment("Arith".to_string());
 
-        let buf = arith.reduce_ref(arr);
+        let buf = arith.linear_combination(arr);
 
         prof.end_segment();
 
         *lc = match buf {
-            Some(b) => Term(Rc::new(Particles{
-                buf:b,
-                boundary: (lc.as_ref().iter().next().unwrap().0).0.boundary.clone()
-            })).into(),
-            None => FreeModule::zero(),
+            Some(b) => Term(Rc::new(b)).into(),
+            None => FreeModule::zero()
         }
 
     }
@@ -249,16 +213,7 @@ impl ParticleState {
         } else if self.terms.borrow().terms()==1 && self.arith.is_some() {
             let arith = self.arith.unwrap();
             let particles = self.terms.into_inner().into_iter().map(
-                |(p,r)| {
-                    let bdry = p.0.boundary.clone();
-                    Particles{
-                        buf: match Rc::try_unwrap(p.0) {
-                            Ok(particles) => (arith.vel_mut)(r, particles.buf),
-                            Err(new_p) => (arith.vel)(&(r, &new_p.buf))
-                        },
-                        boundary: bdry
-                    }
-                }
+                |(p,r)| arith.velocity((r,&*p.0))
             ).next().unwrap();
 
             Self::with_arith(particles, arith)
@@ -321,7 +276,7 @@ impl InnerProductSpace<GLfloat> for ParticleState {
         if let Some(arith) = a {
             let prof = unsafe { crate::PROFILER.as_mut().unwrap() };
             prof.new_segment("Norm".to_string());
-            let dot = self.map_into_or(0.0, |p1| rhs.map_into_or(0.0, |p2| arith.dot(&p1.buf, &p2.buf)));
+            let dot = self.map_into_or(0.0, |p1| rhs.map_into_or(0.0, |p2| arith.dot(&p1.particles(), &p2.particles())));
             prof.end_segment();
             dot
         } else {

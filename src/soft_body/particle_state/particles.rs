@@ -48,6 +48,9 @@ macro_rules! gen_lin_comb{
                 @Compute
 
                     #version 460
+                    const vec4 VZERO = vec4(0,0,0,0);
+                    const mat4 MZERO = mat4(VZERO,VZERO,VZERO,VZERO);
+
                     layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
                     extern struct Particle;
@@ -58,12 +61,18 @@ macro_rules! gen_lin_comb{
 
                     void main() {
                         uint id = gl_GlobalInvocationID.x;
-                        dst[id].mat = $p0[id].mat;
-                        dst[id].den = $r0*$p0[id].den $( + $r2*$p2[id].den)*;
-                        dst[id].ref_pos = $r0*$p0[id].ref_pos $( + $r2*$p2[id].ref_pos)*;
-                        dst[id].pos = $r0*$p0[id].pos $( + $r2*$p2[id].pos)*;
-                        dst[id].vel = $r0*$p0[id].vel $( + $r2*$p2[id].vel)*;
-                        dst[id].stress = $r0*$p0[id].stress $( + $r2*$p2[id].stress)*;
+
+                        if(id < $p0.length()) {
+                            dst[id].mat = $p0[id].mat;
+                        }
+                        $(else if(id < $p2.length()) {dst[id].mat = $p2[id].mat;})*
+
+                        dst[id].den = (id<$p0.length() ? $r0*$p0[id].den : 0) $(+(id<$p2.length() ? $r2*$p2[id].den : 0))*;
+                        dst[id].ref_pos = (id<$p0.length() ? $r0*$p0[id].ref_pos : VZERO) $(+(id<$p2.length() ? $r2*$p2[id].ref_pos : VZERO))*;
+                        dst[id].pos = (id<$p0.length() ? $r0*$p0[id].pos : VZERO) $(+(id<$p2.length() ? $r2*$p2[id].pos : VZERO))*;
+                        dst[id].vel = (id<$p0.length() ? $r0*$p0[id].vel : VZERO) $(+(id<$p2.length() ? $r2*$p2[id].vel : VZERO))*;
+                        dst[id].stress = (id<$p0.length() ? $r0*$p0[id].stress : MZERO) $(+(id<$p2.length() ? $r2*$p2[id].stress : MZERO))*;
+
                     }
             }
 
@@ -80,7 +89,7 @@ macro_rules! gen_lin_comb{
                             Box::new(
                                 move |$r0, mut $p0, arr| {
                                     let (split, _) = arr.split_at(N-1);
-                                    let len = $p0.len().min(split.iter().fold(usize::max_value(), |l,p| l.min(p.1.len()))) as GLuint;
+                                    let len = $p0.len().max(split.iter().fold(usize::min_value(), |l,p| l.max(p.1.len()))) as GLuint;
                                     if let [$(($r2, $p2)),*] = split {
                                         unsafe {
                                             let [$($p_alt2),*] = transmute::<[&ParticleBuffer;N-1], [&mut ParticleBuffer;N-1]>([$($p2),*]);
@@ -279,7 +288,6 @@ use super::*;
 use std::rc::Rc;
 use maths_traits::analysis::ComplexSubset;
 
-pub(self) use super::ParticleBuffer;
 pub(self) use super::Particle;
 pub(self) fn units(p: GLuint) -> GLuint { ComplexSubset::ceil(p as GLfloat / 128.0) as GLuint }
 
@@ -292,8 +300,8 @@ pub(self) type SumClosure = Box<dyn for<'a> Fn(GLfloat, ParticleBuffer, &'a [Ter
 pub struct ArithShaders {
     lc: Rc<[LCClosure]>,
     sum: Rc<[SumClosure]>,
-    pub vel: Rc<dyn for<'a> Fn(&'a Term<'a>) -> ParticleBuffer>,
-    pub vel_mut: Rc<dyn Fn(GLfloat, ParticleBuffer) -> ParticleBuffer>,
+    vel: Rc<dyn for<'a> Fn(&'a Term<'a>) -> ParticleBuffer>,
+    vel_mut: Rc<dyn Fn(GLfloat, ParticleBuffer) -> ParticleBuffer>,
     dot: Rc<dot::Program>,
 }
 
@@ -341,7 +349,7 @@ impl ArithShaders {
     }
 
     #[allow(dead_code)]
-    pub fn reduce<'a>(&self, mut owned: Vec<OwnedTerm>, borrowed: Vec<Term<'a>>) -> Option<ParticleBuffer> {
+    fn reduce<'a>(&self, mut owned: Vec<OwnedTerm>, borrowed: Vec<Term<'a>>) -> Option<ParticleBuffer> {
         if owned.len()==0 { return self.reduce_ref(borrowed); }
         if borrowed.len()==0 && owned.len()==1 && owned[0].0==1.0 {
             return Some(owned.pop().unwrap().1);
@@ -392,7 +400,7 @@ impl ArithShaders {
 
     }
 
-    pub fn reduce_owned(&self, mut terms: Vec<OwnedTerm>) -> Option<ParticleBuffer> {
+    fn reduce_owned(&self, mut terms: Vec<OwnedTerm>) -> Option<ParticleBuffer> {
         // self.reduce(terms, Vec::new())
         if terms.len() == 0 { return None; }
         if terms.len() == 1 && terms[0].0 == 1.0 { return Some(terms.pop().unwrap().1); }
@@ -406,7 +414,7 @@ impl ArithShaders {
         )
     }
 
-    pub fn reduce_ref<'a>(&self, terms: Vec<Term<'a>>) -> Option<ParticleBuffer> {
+    fn reduce_ref<'a>(&self, terms: Vec<Term<'a>>) -> Option<ParticleBuffer> {
         if terms.len() == 0 { return None; }
         self.reduce_owned(
             terms.chunks(self.lc.len()).map(
@@ -414,5 +422,54 @@ impl ArithShaders {
             ).collect()
         )
     }
+
+    pub fn linear_combination<'a>(&self, terms: Vec<(GLfloat, &'a Particles)>) -> Option<Particles> {
+        self.reduce_ref(terms.iter().map(|(r,p)| (*r,p.particles())).collect()).map(
+            |p| {
+                Particles {
+                    buf: p,
+                    boundary: terms[0].1.boundary.clone()
+                }
+            }
+        )
+    }
+
+    pub fn velocity<'a>(&self, term: (GLfloat, &'a Particles)) -> Particles {
+        Particles {
+            buf: (self.vel)(&(term.0, term.1.particles())),
+            boundary: term.1.boundary.clone()
+        }
+    }
+
+}
+
+
+pub type ParticleBuffer = Buffer<[Particle], Read>;
+
+#[derive(Clone)]
+pub struct Particles {
+    buf: ParticleBuffer,
+    boundary: Rc<ParticleBuffer>
+}
+
+impl Particles {
+    pub fn new(gl: &GLProvider, particles: Box<[Particle]>, boundary: Box<[Particle]>) -> Self {
+        Particles{
+            buf: Buffer::readonly_from(gl, particles),
+            boundary: Rc::new(Buffer::readonly_from(gl, boundary))
+        }
+    }
+
+    pub unsafe fn mirror(&self) -> Self {
+        Particles {
+            buf: Buffer::<[_],_>::uninitialized(&self.buf.gl_provider(), self.buf.len()),
+            boundary: self.boundary.clone()
+        }
+    }
+
+    pub fn boundary(&self) -> &ParticleBuffer { &self.boundary }
+    pub fn boundary_weak(&self) -> Weak<ParticleBuffer> {Rc::downgrade(&self.boundary.clone())}
+    pub fn particles(&self) -> &ParticleBuffer { &self.buf }
+    pub fn particles_mut(&mut self) -> &mut ParticleBuffer { &mut self.buf }
 
 }

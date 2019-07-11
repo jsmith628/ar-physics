@@ -473,4 +473,40 @@ impl Particles {
     pub fn particles(&self) -> &ParticleBuffer { &self.buf }
     pub fn particles_mut(&mut self) -> &mut ParticleBuffer { &mut self.buf }
 
+    pub fn add_particles(&mut self, particles: Box<[Particle]>) {
+        if particles.len()==0 {return;}
+
+        unsafe {
+            use gl_struct::gl;
+
+            let mut new_buf = ParticleBuffer::uninitialized(&self.buf.gl_provider(), self.buf.len() + particles.len());
+
+            gl::BindBuffer(gl::COPY_READ_BUFFER, self.buf.id());
+            gl::BindBuffer(gl::COPY_WRITE_BUFFER, new_buf.id());
+
+            gl::CopyBufferSubData(
+                gl::COPY_READ_BUFFER, gl::COPY_WRITE_BUFFER,
+                0, 0, self.buf.data_size() as GLsizeiptr
+            );
+            //
+            //
+            //
+            // gl::BufferSubData(
+            //     gl::COPY_WRITE_BUFFER,
+            //     self.buf.data_size() as GLsizeiptr,
+            //     (new_buf.data_size()-self.buf.data_size()) as GLsizeiptr,
+            //     &particles[0] as *const Particle as *const GLvoid
+            // );
+
+            gl::BindBuffer(gl::COPY_READ_BUFFER, 0);
+            gl::BindBuffer(gl::COPY_WRITE_BUFFER, 0);
+
+            let len = new_buf.len();
+            new_buf.map_mut()[self.buf.len()..len].copy_from_slice(&particles);
+
+            self.buf = new_buf;
+        }
+
+    }
+
 }

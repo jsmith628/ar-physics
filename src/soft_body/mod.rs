@@ -867,7 +867,7 @@ impl FluidSim {
             particles: Particles::new(gl, particles.into_boxed_slice(), boundary.into_boxed_slice()),
             state: Vec::new().into_boxed_slice(),
 
-            materials: Buffer::immut_from(gl, materials.into_boxed_slice()),
+            materials: Buffer::from_box(gl, materials.into_boxed_slice()),
             neighbor_list: RefCell::new(NeighborList::new(gl, bounds, kernel_rad)),
 
             force: RefCell::new(compute_force::init(gl).unwrap()),
@@ -900,6 +900,40 @@ impl FluidSim {
 
     pub fn particles(&self) -> &Particles {
         &self.particles
+    }
+
+    pub fn add_particles(&mut self, obj: MaterialRegion) {
+        let (p, mat) = obj.gen_particles(*self.force.borrow().h, self.materials.len() as GLuint);
+
+        self.state[0].map_mut(|particles| particles.add_particles(p.into_boxed_slice()));
+        self.particles = self.state[0].clone().map_into(|p| p).unwrap();
+
+        unsafe {
+            use gl_struct::gl;
+            use std::mem::size_of;
+
+            let mut new_buf = Buffer::<[_],ReadWrite>::uninitialized(&self.materials.gl_provider(), self.materials.len() + 1);
+
+            gl::BindBuffer(gl::COPY_READ_BUFFER, self.materials.id());
+            gl::BindBuffer(gl::COPY_WRITE_BUFFER, new_buf.id());
+
+            gl::CopyBufferSubData(
+                gl::COPY_READ_BUFFER, gl::COPY_WRITE_BUFFER,
+                0, 0, self.materials.data_size() as GLsizeiptr
+            );
+
+            gl::BindBuffer(gl::COPY_READ_BUFFER, 0);
+            gl::BindBuffer(gl::COPY_WRITE_BUFFER, 0);
+
+            new_buf.map_mut()[self.materials.len()] = mat;
+
+            for m in new_buf.read_into_box().into_iter() {
+                println!("{:?}", m);
+            }
+
+            self.materials = new_buf;
+        }
+
     }
 
 }

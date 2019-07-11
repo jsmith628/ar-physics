@@ -74,6 +74,8 @@ glsl!{$
                     frag_color = mix(c2[mat], c3[mat], d/5);
                 }
 
+                // frag_color.a = 1;
+
                 part_pos = pos.xyz;
 
                 // mat4 inv = inverse(trans);
@@ -278,7 +280,8 @@ fn main() {
         *shader.specular_brightness = as_float_or(&config, "specular_brightness", 0.0) as f32;
         *shader.light_color = as_vec3_or(&config, "light_color", [1.0,1.0,1.0].into());
 
-        let fluids = {
+        let mut mat_number = 0;
+        let (fluids,on_click) = {
 
             use toml::value::{Table, Array};
 
@@ -366,7 +369,7 @@ fn main() {
             }
 
             let mut list = Vec::new();
-            let mut mat_number = 0;
+            let mut on_click = Vec::new();
 
             fn get_packing(region: &Value, h: f32) -> f32 {
                 as_float_or(region, "packing", as_float_or(region, "spacing", 0.5*h as f64)/h as f64) as f32
@@ -436,29 +439,37 @@ fn main() {
                         }
                     }
 
-                    list.push(
-                        MaterialRegion::with_vel(
-                            region,
-                            get_packing(&obj, h),
-                            mat,
-                            move |p| {
-                                let r = [p[0]-center[0], p[1]-center[1], p[2]-center[2], p[3]-center[3]];
-                                let w = ang_vel;
-                                [
-                                    w[1]*r[2] - w[2]*r[1] - w[3]*r[3] + vel[0],
-                                    w[2]*r[0] - w[0]*r[2] + w[4]*r[3] + vel[1],
-                                    w[0]*r[1] - w[1]*r[0] - w[5]*r[3] + vel[2],
-                                    w[3]*r[0] - w[4]*r[1] + w[5]*r[3] + vel[3],
-                                ].into()
-                            }
-                        )
+                    let mat_region = MaterialRegion::with_vel(
+                        region,
+                        get_packing(&obj, h),
+                        mat,
+                        move |p| {
+                            let r = [p[0]-center[0], p[1]-center[1], p[2]-center[2], p[3]-center[3]];
+                            let w = ang_vel;
+                            [
+                                w[1]*r[2] - w[2]*r[1] - w[3]*r[3] + vel[0],
+                                w[2]*r[0] - w[0]*r[2] + w[4]*r[3] + vel[1],
+                                w[0]*r[1] - w[1]*r[0] - w[5]*r[3] + vel[2],
+                                w[3]*r[0] - w[4]*r[1] + w[5]*r[3] + vel[3],
+                            ].into()
+                        }
                     );
-                    set_colors_and_den(&obj, &mut shader, mat_number, mat.target_den);
-                    mat_number += 1;
+
+                    if !table.get("on_click").is_some() {
+                        list.push(mat_region);
+                        set_colors_and_den(&obj, &mut shader, mat_number, mat.target_den);
+                        mat_number += 1;
+                    } else {
+                        let relative = table.get("on_click").unwrap().as_str().unwrap() == "Relative";
+                        on_click.push(
+                            (mat_region, relative, as_vec4_or(&obj, "color", [0.0,0.0,0.0,1.0].into()))
+                        );
+                    }
+
                 }
             }
 
-            list
+            (list, on_click)
         };
 
         let integrator: Box<dyn VelIntegrates<_, _>> = {
@@ -510,7 +521,7 @@ fn main() {
                 glfw::Context::swap_buffers(&mut *window1.borrow_mut());
                 glfw.poll_events();
 
-                let w = world.borrow();
+                let mut w = world.borrow_mut();
 
                 //note, each thing is a column, not row
                 {
@@ -537,6 +548,7 @@ fn main() {
                     _ => r_pressed
                 };
 
+                let m = m_pressed;
                 m_pressed = match window1.borrow().get_mouse_button(glfw::MouseButton::Button3) {
                     glfw::Action::Press => true,
                     glfw::Action::Release => false,
@@ -544,13 +556,24 @@ fn main() {
                 };
 
                 if l_pressed {rot += (new_x - x)*0.01;}
-                if m_pressed {scale += (new_x - x)*0.01;}
+                if m_pressed { scale += (new_x - x)*0.01;}
                 if r_pressed {
                     trans_x += (new_x - x)*0.005;
                     trans_y += (new_y - y)*0.005;
                 }
                 x = new_x;
                 y = new_y;
+
+                if !m && m_pressed {
+                    for (region, relative, color) in on_click.iter() {
+                        shader.densities[mat_number] = 1.0;
+                        shader.c1[mat_number] = *color;
+                        shader.c2[mat_number] = *color;
+                        shader.c3[mat_number] = *color;
+                        mat_number += 1;
+                        w.add_particles(region.clone());
+                    }
+                }
 
                 unsafe {
                     gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);

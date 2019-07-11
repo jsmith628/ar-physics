@@ -261,7 +261,7 @@ impl Material {
 
 }
 
-pub type Materials = Buffer<[Material], CopyOnly>;
+pub type Materials = Buffer<[Material], ReadWrite>;
 
 #[derive(Clone)]
 pub struct MaterialRegion {

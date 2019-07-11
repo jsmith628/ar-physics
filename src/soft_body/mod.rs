@@ -902,8 +902,17 @@ impl FluidSim {
         &self.particles
     }
 
-    pub fn add_particles(&mut self, obj: MaterialRegion) {
-        let (p, mat) = obj.gen_particles(*self.force.borrow().h, self.materials.len() as GLuint);
+    pub fn add_particles(&mut self, obj: MaterialRegion, offset: Option<vec4>) {
+        let (mut p, mat) = obj.gen_particles(*self.force.borrow().h, self.materials.len() as GLuint);
+
+        if let Some(t) = offset {
+            for x in p.iter_mut() {
+                x.pos[0] += t[0];
+                x.pos[1] += t[1];
+                x.pos[2] += t[2];
+                x.pos[3] += t[3];
+            }
+        }
 
         self.state[0].map_mut(|particles| particles.add_particles(p.into_boxed_slice()));
         self.particles = self.state[0].clone().map_into(|p| p).unwrap();
@@ -963,7 +972,7 @@ impl ::ar_engine::engine::Component for FluidSim {
 
     fn update(&mut self) {
         let prof = unsafe { crate::PROFILER.as_mut().unwrap() };
-        println!("{:?}", prof.new_frame());
+        // println!("{:?}", prof.new_frame());
 
         let dt = self.timestep / self.subticks as f32;
         for _ in 0..self.subticks {

@@ -556,13 +556,21 @@ fn main() {
                 };
 
                 if l_pressed {rot += (new_x - x)*0.01;}
-                if m_pressed { scale += (new_x - x)*0.01;}
+                // if m_pressed { scale += (new_x - x)*0.01;}
                 if r_pressed {
                     trans_x += (new_x - x)*0.005;
                     trans_y += (new_y - y)*0.005;
                 }
                 x = new_x;
                 y = new_y;
+
+                let (size_x, size_y) = window1.borrow().get_size();
+                let min_size = size_x.min(size_y);
+
+                println!("{:?}",[
+                    2.0*((x as f32 - size_x as f32 /2.0) / min_size as f32),
+                    2.0*((size_y as f32/2.0 - y as f32) / min_size as f32),0.0,0.0
+                ]);
 
                 if !m && m_pressed {
                     for (region, relative, color) in on_click.iter() {
@@ -571,7 +579,20 @@ fn main() {
                         shader.c2[mat_number] = *color;
                         shader.c3[mat_number] = *color;
                         mat_number += 1;
-                        w.add_particles(region.clone());
+
+
+
+                        let offset = match relative {
+                            true => Some([
+                                2.0*((x as f32 - size_x as f32 /2.0) / min_size as f32),
+                                2.0*((size_y as f32/2.0 - y as f32) / min_size as f32),0.0,0.0
+                            ].into()),
+                            false => None
+                        };
+
+                        println!("{:?}", offset);
+
+                        w.add_particles(region.clone(), offset);
                     }
                 }
 

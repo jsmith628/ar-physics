@@ -567,11 +567,6 @@ fn main() {
                 let (size_x, size_y) = window1.borrow().get_size();
                 let min_size = size_x.min(size_y);
 
-                println!("{:?}",[
-                    2.0*((x as f32 - size_x as f32 /2.0) / min_size as f32),
-                    2.0*((size_y as f32/2.0 - y as f32) / min_size as f32),0.0,0.0
-                ]);
-
                 if !m && m_pressed {
                     for (region, relative, color) in on_click.iter() {
                         shader.densities[mat_number] = 1.0;
@@ -589,8 +584,6 @@ fn main() {
                             ].into()),
                             false => None
                         };
-
-                        println!("{:?}", offset);
 
                         w.add_particles(region.clone(), offset);
                     }

@@ -971,7 +971,7 @@ impl ::ar_engine::engine::Component for FluidSim {
 
     fn update(&mut self) {
         let prof = unsafe { crate::PROFILER.as_mut().unwrap() };
-        // println!("{:?}", prof.new_frame());
+        println!("{:?}", prof.new_frame());
 
         let dt = self.timestep / self.subticks as f32;
         for _ in 0..self.subticks {

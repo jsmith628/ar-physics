@@ -486,7 +486,7 @@ glsl!{$
                     }
 
                     //get the strain-rate
-                    if(materials[mat_id].normal_stiffness!=0 || materials[mat_id].shear_stiffness!=0) {
+                    if(elastic) {
                         // mat4 def = strains[id][1];
                         // mat4 def_inv = def;
                         // for(uint i=dim; i<4; i++) def_inv[i][i] = 1.0;
@@ -539,8 +539,7 @@ glsl!{$
                     }
 
                     //get acceleration from force and gravity
-                    float d = particles[id].den;
-                    forces[id].vel /= d;
+                    forces[id].vel /= particles[id].den;
                     forces[id].vel += vec4(0,-g,0,0);
 
 

@@ -74,10 +74,6 @@ pub struct ParticleState {
 
 impl ParticleState {
 
-    pub fn from_list(gl: &GLProvider, particles: Box<[Particle]>, boundary: Box<[Particle]>) -> Self {
-        Self::new(Particles::new(gl, particles, boundary))
-    }
-
     pub fn new(particles: Particles) -> Self {
         ParticleState {
             arith: Some(ArithShaders::new(&particles.particles().gl_provider()).unwrap()),

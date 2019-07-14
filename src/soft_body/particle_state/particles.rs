@@ -428,7 +428,8 @@ impl ArithShaders {
             |p| {
                 Particles {
                     buf: p,
-                    boundary: terms[0].1.boundary.clone()
+                    boundary: terms[0].1.boundary.clone(),
+                    materials: terms[0].1.materials.clone()
                 }
             }
         )
@@ -437,7 +438,8 @@ impl ArithShaders {
     pub fn velocity<'a>(&self, term: (GLfloat, &'a Particles)) -> Particles {
         Particles {
             buf: (self.vel)(&(term.0, term.1.particles())),
-            boundary: term.1.boundary.clone()
+            boundary: term.1.boundary.clone(),
+            materials: term.1.materials.clone()
         }
     }
 
@@ -451,21 +453,24 @@ pub type ParticleVec = BufVec<[Particle]>;
 #[derive(Clone)]
 pub struct Particles {
     buf: ParticleBuffer,
-    boundary: Rc<ParticleBuffer>
+    boundary: Rc<ParticleBuffer>,
+    materials: Rc<Materials>
 }
 
 impl Particles {
-    pub fn new(gl: &GLProvider, particles: Box<[Particle]>, boundary: Box<[Particle]>) -> Self {
+    pub fn new(gl: &GLProvider, materials: Box<[Material]>, particles: Box<[Particle]>, boundary: Box<[Particle]>) -> Self {
         Particles{
             buf: Buffer::from_box(gl, particles),
-            boundary: Rc::new(Buffer::from_box(gl, boundary))
+            boundary: Rc::new(Buffer::from_box(gl, boundary)),
+            materials: Rc::new(Buffer::from_box(gl, materials))
         }
     }
 
     pub unsafe fn mirror(&self) -> Self {
         Particles {
             buf: Buffer::<[_],_>::uninitialized(&self.buf.gl_provider(), self.buf.len()),
-            boundary: self.boundary.clone()
+            boundary: self.boundary.clone(),
+            materials: self.materials.clone()
         }
     }
 

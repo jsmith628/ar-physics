@@ -863,10 +863,10 @@ impl FluidSim {
             subticks: subticks,
 
             time: 0.0,
-            particles: Particles::new(gl, particles.into_boxed_slice(), boundary.into_boxed_slice()),
+            materials: Buffer::from_box(gl, materials.clone().into_boxed_slice()),
+            particles: Particles::new(gl, materials.into_boxed_slice(), particles.into_boxed_slice(), boundary.into_boxed_slice()),
             state: Vec::new().into_boxed_slice(),
 
-            materials: Buffer::from_box(gl, materials.into_boxed_slice()),
             neighbor_list: RefCell::new(NeighborList::new(gl, bounds, kernel_rad)),
 
             force: RefCell::new(compute_force::init(gl).unwrap()),

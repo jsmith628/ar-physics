@@ -939,7 +939,7 @@ glsl!{$
                 prof.new_segment("Forces".to_owned());
 
                 let mut strains = Buffer::<[[mat4;3]],Read>::uninitialized(&particles.gl_provider(), solids.len());
-                strain.compute(strains.len() as u32, 1, 1, ub, ub_s, ub_mat, indices, &mut strains, buckets);
+                if strains.len() > 1 { strain.compute(strains.len() as u32, 1, 1, ub, ub_s, ub_mat, indices, &mut strains, buckets); }
 
                 // gl::Finish();
                 //
@@ -1135,6 +1135,7 @@ impl ::ar_engine::engine::Component for FluidSim {
         println!("{:?}", prof.new_frame());
 
         let dt = self.timestep / self.subticks as f32;
+        let mut state = None;
         for _ in 0..self.subticks {
             self.time += dt;
 
@@ -1142,20 +1143,24 @@ impl ::ar_engine::engine::Component for FluidSim {
             let forces = &self.force;
             let strains = &self.strain;
 
-            self.particles = self.integrator.step_with_vel(
-                self.time,
-                self.state.as_mut(),
-                dt,
-                & |_t, state| state.velocity(),
-                & |_t, state| compute_forces(
-                    &mut forces.borrow_mut(),
-                    &mut strains.borrow_mut(),
-                    &mut neighbors.borrow_mut(),
-                    state
+            state = Some(
+                self.integrator.step_with_vel(
+                    self.time,
+                    self.state.as_mut(),
+                    dt,
+                    & |_t, state| state.velocity(),
+                    & |_t, state| compute_forces(
+                        &mut forces.borrow_mut(),
+                        &mut strains.borrow_mut(),
+                        &mut neighbors.borrow_mut(),
+                        state
+                    )
                 )
-            ).map_into(|p| p).unwrap();
+            );
 
         }
+
+        self.particles = state.unwrap().map_into(|p| p).unwrap();
 
         prof.new_segment("Graphics".to_owned());
 

@@ -743,7 +743,7 @@ glsl!{$
                 //NOTE: we know for CERTAIN that neither of these are modified by the shader,
                 //so against all warnings, we are going to transmute them to mutable
 
-                let ub_mat: &mut Buffer<[Material], Read> = ::std::mem::transmute(materials);
+                let ub_mat: &mut Materials = ::std::mem::transmute::<&Materials,&mut Materials>(materials);
                 let ub = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(&*particles);
                 let ub_bound = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(p.boundary());
 

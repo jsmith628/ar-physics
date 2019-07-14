@@ -25,7 +25,7 @@ macro_rules! gen_lin_comb{
                             Box::new(
                                 move |arr| {
                                     let (split, _) = arr.split_at(N);
-                                    let len = split.iter().fold(usize::max_value(), |l,p| l.min(p.1.len())) as GLuint;
+                                    let len = split.iter().fold(usize::min_value(), |l,p| l.max(p.1.len())) as GLuint;
                                     let gl = split[0].1.gl_provider();
                                     if let [$(($r, $p)),*] = split {
                                         unsafe {
@@ -89,7 +89,7 @@ macro_rules! gen_lin_comb{
                             Box::new(
                                 move |$r0, mut $p0, arr| {
                                     let (split, _) = arr.split_at(N-1);
-                                    let len = $p0.len().max(split.iter().fold(usize::min_value(), |l,p| l.max(p.1.len()))) as GLuint;
+                                    let len = $p0.len().min(split.iter().fold(usize::max_value(), |l,p| l.min(p.1.len()))) as GLuint;
                                     if let [$(($r2, $p2)),*] = split {
                                         unsafe {
                                             let [$($p_alt2),*] = transmute::<[&ParticleBuffer;N-1], [&mut ParticleBuffer;N-1]>([$($p2),*]);
@@ -289,7 +289,7 @@ use std::rc::Rc;
 use maths_traits::analysis::ComplexSubset;
 
 pub(self) use super::Particle;
-pub(self) fn units(p: GLuint) -> GLuint { ComplexSubset::ceil(p as GLfloat / 128.0) as GLuint }
+pub(self) fn units(p: GLuint) -> GLuint { ComplexSubset::ceil((p) as GLfloat / 128.0) as GLuint }
 
 pub(self) type Term<'a> = (GLfloat, &'a ParticleBuffer);
 pub(self) type OwnedTerm = (GLfloat, ParticleBuffer);
@@ -535,14 +535,20 @@ impl Particles {
         if particles.len()==0 {return;}
 
         let mat_id = {
-            let mut i = 0;
-            for mat in self.materials.map().iter() {
-                if material == *mat {
-                    break;
+            if material.normal_stiffness!=0.0 || material.shear_stiffness!=0.0 {
+                self.materials.len()
+            } else {
+                let mut i = 0;
+                let len = self.materials.len();
+                for mat in self.materials.map().iter() {
+                    if material == *mat {
+                        break;
+                    }
+                    i += 1;
                 }
-                i += 1;
+                i
             }
-            i
+
         };
 
         for x in particles.iter_mut() {
@@ -552,7 +558,7 @@ impl Particles {
         //add the new material, if it needs to be added
         if mat_id == self.materials.len() {
             unsafe {
-                let mut new_mat = add_to_buffer(self.materials(), Box::new([material]));
+                let new_mat = add_to_buffer(self.materials(), Box::new([material]));
                 self.time_id += 1; //make this material list the new global one
                 self.materials = Rc::new(new_mat);
             }
@@ -565,12 +571,12 @@ impl Particles {
 
             //add the particles to the buffer
 
-            let mut new_buf = add_to_buffer(&self.buf, particles);
+            let new_buf = add_to_buffer(&self.buf, particles);
             self.buf = new_buf;
 
             //add the solid particles to the buffer
 
-            let mut new_buf = add_to_buffer(&self.solids, solid_particles);
+            let new_buf = add_to_buffer(&self.solids, solid_particles);
             self.solids = new_buf;
 
         }

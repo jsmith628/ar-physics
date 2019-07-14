@@ -490,24 +490,26 @@ unsafe fn add_to_buffer<T:Copy>(old: &Buffer<[T],ReadWrite>, extra: Box<[T]>) ->
 
 impl Particles {
 
-    fn init_solid_particles(particles: &mut [Particle], materials: &[Material], offset:usize) -> Box<[SolidParticle]> {
+    fn init_solid_particles(particles: &mut [Particle], materials: &[Material], offset:usize, p_offset:usize) -> Box<[SolidParticle]> {
         let mut result = Vec::new();
+        let mut i = p_offset;
 
         for p in particles {
             if materials[p.mat as usize].normal_stiffness!=0.0 || materials[p.mat as usize].shear_stiffness!=0.0 {
                 p.solid_id = (result.len()+offset) as GLuint;
-                result.push(SolidParticle::with_ref_pos(p.pos));
+                result.push(SolidParticle::new((i+p_offset)as GLuint,p.pos));
+                i += 1;
             }
         }
 
-        if result.len() == 0 { result.push(SolidParticle::with_ref_pos([0.0,0.0,0.0,0.0].into())) }
+        if result.len() == 0 { result.push(SolidParticle::new(!0,[0.0,0.0,0.0,0.0].into())) }
 
         result.into_boxed_slice()
     }
 
     pub fn new(gl: &GLProvider, materials: Box<[Material]>, mut particles: Box<[Particle]>, boundary: Box<[Particle]>) -> Self {
         Particles{
-            solids: Buffer::from_box(gl, Self::init_solid_particles(&mut particles, &materials, 0)),
+            solids: Buffer::from_box(gl, Self::init_solid_particles(&mut particles, &materials, 0,0)),
             buf: Buffer::from_box(gl, particles),
             boundary: Rc::new(Buffer::from_box(gl, boundary)),
             materials: Rc::new(Buffer::from_box(gl, materials)),
@@ -529,6 +531,8 @@ impl Particles {
     pub fn boundary_weak(&self) -> Weak<ParticleBuffer> {Rc::downgrade(&self.boundary.clone())}
     pub fn particles(&self) -> &ParticleBuffer { &self.buf }
     pub fn particles_mut(&mut self) -> &mut ParticleBuffer { &mut self.buf }
+    pub fn solids(&self) -> &SolidParticleBuffer { &self.solids }
+    pub fn solids_mut(&mut self) -> &mut SolidParticleBuffer { &mut self.solids }
     pub fn materials(&self) -> &Materials { &self.materials }
 
     pub fn add_particles(&mut self, material: Material, mut particles: Box<[Particle]>) {
@@ -564,7 +568,7 @@ impl Particles {
             }
         }
 
-        let solid_particles = Self::init_solid_particles(&mut particles, &self.materials().map(), self.solids.len());
+        let solid_particles = Self::init_solid_particles(&mut particles, &self.materials().map(), self.solids.len(), self.buf.len());
 
         unsafe {
             use gl_struct::gl;

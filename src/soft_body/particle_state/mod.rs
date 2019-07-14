@@ -31,8 +31,12 @@ glsl!{$
             };
 
             public struct SolidParticle {
+                uint part_id;
                 vec4 ref_pos;
                 mat4 stress;
+                mat4 correction;
+                mat4 strain;
+                mat4 strain_rate;
             }
 
         @Rust
@@ -58,9 +62,13 @@ glsl!{$
 
             impl SolidParticle {
 
-                pub fn with_ref_pos(pos: vec4) -> Self {
+                pub fn new(id:GLuint, pos: vec4) -> Self {
                     SolidParticle {
+                        part_id: id,
                         ref_pos: pos,
+                        correction: [[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0]].into(),
+                        strain: [[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0]].into(),
+                        strain_rate: [[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0]].into(),
                         stress: [[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0]].into()
                     }
                 }

@@ -19,6 +19,205 @@ pub mod kernel;
 
 glsl!{$
 
+    pub mod pressure_force {
+        @Rust
+            use super::*;
+            use super::{Index};
+            use super::kernel::*;
+            use super::kernel::{kernel};
+
+        @Compute
+            #version 460
+
+            #define I (mat4(vec4(1,0,0,0),vec4(0,1,0,0),vec4(0,0,1,0),vec4(0,0,0,1)))
+            #define ZERO (mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0)))
+            #define EPSILON 0.1
+
+            layout(local_size_x = 9, local_size_y = 3, local_size_z = 3) in;
+
+            extern struct AABB;
+            extern struct Material;
+            extern struct Particle;
+            extern struct Bucket;
+            extern struct Index;
+
+            extern uint bucket_index(uvec3 pos, uvec4 sub);
+            extern bool in_bounds(ivec3 b_pos, uvec4 sub);
+
+            extern float normalization_constant(int n, float h);
+            extern float kernel(vec4 r, float h, float k);
+            extern vec4 grad_w(vec4 r, float h, float k);
+
+            float pressure(uint eq, float density, float temperature, float c, float d0) {
+                if(eq==0) {
+                    return 0;
+                } else if(eq==1) {
+                    return state(density, temperature, c, d0);
+                } else {
+                    return ideal_gas(density, temperature, c, d0);
+                }
+            }
+
+            layout(std430) buffer particle_list { readonly restrict Particle particles[]; };
+            layout(std430) buffer boundary_list { readonly restrict Particle boundary[]; };
+            layout(std430) buffer derivatives { restrict Particle forces[]; };
+
+            layout(std430) buffer material_list { readonly restrict Material materials[]; };
+
+            layout(std430) buffer index_list { readonly restrict Index indices[]; };
+            layout(std430) buffer neighbor_list {
+                readonly restrict AABB bounds;
+                readonly restrict uvec4 subdivisions;
+                readonly restrict Bucket buckets[];
+            };
+
+            extern uint particle_index(uint bucket, uint i);
+
+            void main() {
+                //get ids
+                uint id = gl_WorkGroupID.x;
+                uint gid = gl_LocalInvocationIndex;
+                uint mat_id = particles[id].mat;
+
+                //save these properties for convenience
+                float m1 = materials[mat_id].mass;
+                float d1 = particles[id].den;
+                bool elastic = materials[mat_id].normal_stiffness!=0 || materials[mat_id].shear_stiffness!=0;
+
+                //local variables for storing the result
+                float den = 0;
+                vec4 force = vec4(0,0,0,0);
+
+                //ids for splitting the for loops
+                uint sublocal_id = gl_LocalInvocationID.x/3;
+                uint num_sublocal = gl_WorkGroupSize.x/3;
+
+                //get this particle's bucket and offset to a neighboring bucket depending on our local id
+                ivec3 b_pos = local_bucket_pos(indices[id].pos_index);
+
+                //fluid forces
+                if(in_bounds(b_pos, subdivisions)) {
+
+                    //save these properties for convenience
+                    uint state_eq = materials[mat_id].state_eq;
+                    float c1 = materials[mat_id].sound_speed;
+                    float f1 = materials[mat_id].visc;
+                    float d0 = materials[mat_id].target_den;
+                    float p1 = pressure(state_eq, d1, 0, c1, d0);
+
+                    //get this neighbor's bucking index and list and boundary count
+                    uint bucket_id = bucket_index(uvec3(b_pos), subdivisions);
+                    uint bc = buckets[bucket_id].count[0];
+                    uint ref_count = buckets[bucket_id].count[1];
+                    uint count = buckets[bucket_id].count[2];
+
+                    //add up the fluid force and density contributions from each particle
+                    for(uint j=sublocal_id; j<count+ref_count+bc; j+=num_sublocal){
+                        if(j>=bc && j<ref_count+bc) continue;
+
+                        uint id2 = particle_index(bucket_id, j);
+                        uint mat_2 = j<bc ? boundary[id2].mat : particles[id2].mat;
+
+                        uint state_eq2 = materials[mat_2].state_eq;
+                        float m2 = materials[mat_2].mass;
+                        float f2 = materials[mat_2].visc;
+                        float c2 = materials[mat_2].sound_speed;
+
+                        vec4 r,v;
+                        float d2;
+
+                        if(j<bc) {
+                            r = boundary[id2].pos - particles[id].pos;
+                            v = boundary[id2].vel - particles[id].vel;
+                            d2 = boundary[id2].den + d1;
+                            c2 = 5000;
+                            state_eq2 = state_eq==0 ? 1 : state_eq;
+                        } else {
+                            r = particles[id2].pos - particles[id].pos;
+                            v = particles[id2].vel - particles[id].vel;
+                            d2 = particles[id2].den;
+                        }
+                        float p2 = pressure(state_eq2, d2, 0, c2, materials[mat_2].target_den);
+
+                        //density update
+                        if(!elastic || mat_id==mat_2) {
+                            den += m2 * dot(v, grad_w(r, h, norm_const));
+                        }
+
+                        vec4 contact_force = vec4(0,0,0,0);
+                        bool elastic2 = materials[mat_2].normal_stiffness!=0 || materials[mat_2].shear_stiffness!=0;
+
+                        //pressure force
+                        if(!elastic || !elastic2) {
+                            vec4 pressure_force = m1*m2*(
+                                p1/(d1*d1) +
+                                p2/(d2*d2)
+                            ) * grad_w(r, h, norm_const);
+                            force += pressure_force;
+                            if(mat_id != mat_2) contact_force += pressure_force;
+                        }
+
+                        //viscocity
+                        if(!elastic) force += m1*m2*(f1+f2)*dot(r,grad_w(r, h, norm_const))*v/(d1*d2*(dot(r,r)+EPSILON*h*h));
+
+                        //friction
+                        if((elastic || elastic2 || j<bc) && mat_id != mat_2) {
+                            vec4 r_inv = r / dot(r,r);
+                            vec4 normal_force = r_inv * dot(contact_force, r);
+                            vec4 tangent_vel = v - r_inv* dot(v, r);
+                            force += (f1 + f2) * length(normal_force) * normalize(tangent_vel);
+                        }
+
+                        //artificial viscocity
+                        if(j>=bc) force -= m1*m2*(
+                            (f*h*(c1+c2))*dot(v, r) / ((d1+d2)*(dot(r,r)+EPSILON*h*h))
+                        )*grad_w(r, h, norm_const);
+
+                    }
+
+                }
+
+
+                //store the contribution of this local id in a shared array
+                shared_den[gid] = den;
+                shared_force[gid] = force;
+                barrier();
+
+                //next, sum up all local contributions, apply body forces and shift the velocity
+                uint shadow = gids;
+                while(shadow%3==0) {
+                    shadow /= 3;
+                    if(gid<shadow) {
+                        shared_den[gid] += shared_den[gid+shadow] + shared_den[gid+shadow*2];
+                        shared_force[gid] += shared_force[gid+shadow] + shared_force[gid+shadow*2];
+                    }
+                    memoryBarrierShared();
+                }
+
+                if(gid==0) {
+
+                    forces[id].mat = mat_id;
+                    forces[id].den = 0;
+                    forces[id].vel = vec4(0,0,0,0);
+                    forces[id].pos = particles[id].vel;
+
+                    //add up each local unit's contributions
+                    for(uint i=0; i<shadow; i++) {
+                        forces[id].den += shared_den[i];
+                        forces[id].vel += shared_force[i];
+                    }
+
+                    //get acceleration from force and gravity
+                    forces[id].vel /= particles[id].den;
+                    forces[id].vel += vec4(0,-g,0,0);
+                }
+
+            }
+
+
+    }
+
+
     pub mod compute_force {
         @Rust
             use super::*;
@@ -38,6 +237,7 @@ glsl!{$
             extern struct AABB;
             extern struct Material;
             extern struct Particle;
+            extern struct SolidParticle;
             extern struct Bucket;
             extern struct Index;
 
@@ -211,8 +411,10 @@ glsl!{$
             }
 
             layout(std430) buffer particle_list { readonly restrict Particle particles[]; };
+            layout(std430) buffer sold_particle_list { readonly restrict SolidParticle solids[]; };
             layout(std430) buffer boundary_list { readonly restrict Particle boundary[]; };
             layout(std430) buffer derivatives { restrict Particle forces[]; };
+            layout(std430) buffer solid_derivatives { restrict SolidParticle stresses[]; };
 
             layout(std430) buffer material_list { readonly restrict Material materials[]; };
             layout(std430) buffer strain_list { readonly restrict mat4 strains[][3]; };
@@ -226,32 +428,9 @@ glsl!{$
 
             extern uint particle_index(uint bucket, uint i);
 
-            float boundary_den(uint p, ivec3 bucket, float k) {
-                float den = boundary[p].den;
-
-                for(int i=0; i<27; i++) {
-                    ivec3 b_pos = bucket + ivec3(i/9 - 1, (i/3) % 3 - 1, i%3 - 1);
-                    if(in_bounds(b_pos, subdivisions)) {
-                        uint bucket_id = bucket_index(uvec3(b_pos), subdivisions);
-                        uint start = buckets[bucket_id].count[0] + buckets[bucket_id].count[1];
-                        uint count = buckets[bucket_id].count[2];
-                        for(uint j=start; j<start+count; j++) {
-                            uint id2 = particle_index(bucket_id, j);
-                            float m2 = materials[particles[id2].mat].mass;
-                            den += m2 * kernel(particles[id2].pos - boundary[p].pos, h, k);
-                        }
-                    }
-                }
-
-                return den;
-            }
-
             const uint gids = gl_WorkGroupSize.x*gl_WorkGroupSize.y*gl_WorkGroupSize.z;
             shared float shared_den[gids];
             shared vec4 shared_force[gids];
-
-            // shared mat4 rot;
-            // shared mat4 stress;
 
             ivec3 local_bucket_pos(uint id) {
                 ivec3 index = ivec3(buckets[id].index.xyz);
@@ -262,14 +441,15 @@ glsl!{$
             void main() {
 
                 //get ids
-                uint id = gl_WorkGroupID.x;
+                uint p_id = gl_WorkGroupID.x;
+                uint s_id = particles[p_id].solid_id;
                 uint gid = gl_LocalInvocationIndex;
-                uint mat_id = particles[id].mat;
+                uint mat_id = particles[p_id].mat;
 
                 //save these properties for convenience
                 float m1 = materials[mat_id].mass;
-                float d1 = particles[id].den;
-                bool elastic = materials[mat_id].normal_stiffness!=0 || materials[mat_id].shear_stiffness!=0;
+                float d1 = particles[p_id].den;
+                bool elastic = s_id!=0xFFFFFFFF && (materials[mat_id].normal_stiffness!=0 || materials[mat_id].shear_stiffness!=0);
 
                 //local variables for storing the result
                 float den = 0;
@@ -280,7 +460,7 @@ glsl!{$
                 uint num_sublocal = gl_WorkGroupSize.x/3;
 
                 //get this particle's reference position bucket and offset depending on our local id
-                ivec3 b_pos = local_bucket_pos(indices[id].ref_index);
+                ivec3 b_pos = local_bucket_pos(indices[p_id].ref_index);
 
                 mat4 pk2_stress = ZERO;
 
@@ -292,39 +472,40 @@ glsl!{$
                     float norm_damp = materials[mat_id].normal_damp;
                     float shear_damp = materials[mat_id].shear_damp;
 
-                    mat4 def = strains[id][1];
-                    mat4 def_rate = strains[id][2];
+                    mat4 def = strains[s_id][1];
+                    mat4 def_rate = strains[s_id][2];
                     // mat4 strain = particles[id].stress;
-                    mat4 strain = strain_measure(def) + particles[id].stress;
+                    mat4 strain = strain_measure(def) + solids[s_id].stress;
                     mat4 rate_of_strain = strain_rate(def, def_rate);
                     pk2_stress = hooke(strain, lambda, mu) + hooke(rate_of_strain, norm_damp, shear_damp);
                     mat4 stress = pk2_stress;
                     stress = def * transpose(stress);
 
                     if(in_bounds(b_pos, subdivisions)) {
-                        mat4 correction = strains[id][0];
+                        mat4 correction = strains[s_id][0];
                         float V1 = m1 / d1;
 
                         uint bucket_id = bucket_index(uvec3(b_pos), subdivisions);
                         uint start = buckets[bucket_id].count[0];
                         uint ref_count = buckets[bucket_id].count[1];
                         for(uint j=start+sublocal_id; j<start+ref_count; j+=num_sublocal){
-                            uint id2 = particle_index(bucket_id, j);
-                            if(particles[id2].mat != mat_id) continue;
+                            uint p_id2 = particle_index(bucket_id, j);
+                            uint s_id2 = particles[p_id2].solid_id;
+                            if(particles[p_id2].mat != mat_id) continue;
 
-                            float V2 = m1 / particles[id2].den;
+                            float V2 = m1 / particles[p_id2].den;
 
-                            mat4 def2 = strains[id2][1];
-                            mat4 def_rate2 = strains[id2][2];
+                            mat4 def2 = strains[s_id2][1];
+                            mat4 def_rate2 = strains[s_id2][2];
                             // mat4 strain2 = particles[id2].stress;
-                            mat4 strain2 = strain_measure(def2) + particles[id2].stress;
+                            mat4 strain2 = strain_measure(def2) + solids[s_id2].stress;
                             mat4 strain_rate2 = strain_rate(def2, def_rate2);
                             mat4 stress2 = hooke(strain2, lambda, mu) + hooke(strain_rate2, norm_damp, shear_damp);
                             stress2 = def2 * transpose(stress2);
 
-                            vec4 r = particles[id2].ref_pos - particles[id].ref_pos;
+                            vec4 r = solids[s_id2].ref_pos - solids[s_id].ref_pos;
 
-                            vec4 el_force = -V1 * V2 * (stress * correction + stress2 * strains[id2][0]) * grad_w(r,h,norm_const);
+                            vec4 el_force = -V1 * V2 * (stress * correction + stress2 * strains[s_id2][0]) * grad_w(r,h,norm_const);
                             // vec4 el_force = V2 * stress2 * strains[id2][0] * grad_w(r,h,norm_const);
                             for(uint k=dim; k<4; k++) el_force[k] = 0;
 
@@ -335,7 +516,7 @@ glsl!{$
                 }
 
                 //get this particle's bucket and offset to a neighboring bucket depending on our local id
-                b_pos = local_bucket_pos(indices[id].pos_index);
+                b_pos = local_bucket_pos(indices[p_id].pos_index);
 
                 //fluid forces
                 if(in_bounds(b_pos, subdivisions)) {
@@ -357,8 +538,9 @@ glsl!{$
                     for(uint j=sublocal_id; j<count+ref_count+bc; j+=num_sublocal){
                         if(j>=bc && j<ref_count+bc) continue;
 
-                        uint id2 = particle_index(bucket_id, j);
-                        uint mat_2 = j<bc ? boundary[id2].mat : particles[id2].mat;
+                        uint p_id2 = particle_index(bucket_id, j);
+                        uint s_id2 = particles[p_id2].solid_id;
+                        uint mat_2 = j<bc ? boundary[p_id2].mat : particles[p_id2].mat;
 
                         uint state_eq2 = materials[mat_2].state_eq;
                         float m2 = materials[mat_2].mass;
@@ -369,15 +551,15 @@ glsl!{$
                         float d2;
 
                         if(j<bc) {
-                            r = boundary[id2].pos - particles[id].pos;
-                            v = boundary[id2].vel - particles[id].vel;
-                            d2 = boundary[id2].den + d1;
+                            r = boundary[p_id2].pos - particles[p_id].pos;
+                            v = boundary[p_id2].vel - particles[p_id].vel;
+                            d2 = boundary[p_id2].den + d1;
                             c2 = 5000;
                             state_eq2 = state_eq==0 ? 1 : state_eq;
                         } else {
-                            r = particles[id2].pos - particles[id].pos;
-                            v = particles[id2].vel - particles[id].vel;
-                            d2 = particles[id2].den;
+                            r = particles[p_id2].pos - particles[p_id].pos;
+                            v = particles[p_id2].vel - particles[p_id].vel;
+                            d2 = particles[p_id2].den;
                         }
                         float p2 = pressure(state_eq2, d2, 0, c2, materials[mat_2].target_den);
 
@@ -392,7 +574,7 @@ glsl!{$
                         //hourglass restoring force and contact forces
                         if(elastic || elastic2) {
                             vec4 dx = r;
-                            vec4 dX = particles[id2].ref_pos - particles[id].ref_pos;
+                            vec4 dX = solids[s_id2].ref_pos - solids[s_id].ref_pos;
                             float contact = h;
                             float r_cut = 2*contact;
 
@@ -401,8 +583,8 @@ glsl!{$
                             if(mat_id == mat_2 || in_contact) {
                                 float l = length(dx);
                                 if(mat_id == mat_2) {
-                                    mat4 F1 = strains[id][1];
-                                    mat4 F2 = strains[id2][1];
+                                    mat4 F1 = strains[s_id][1];
+                                    mat4 F2 = strains[s_id2][1];
 
                                     vec4 err = 0.5*(F1 + F2)*dX - dx;
 
@@ -472,17 +654,17 @@ glsl!{$
 
                 if(gid==0) {
 
-                    forces[id].mat = mat_id;
-                    forces[id].den = 0;
-                    forces[id].vel = vec4(0,0,0,0);
-                    forces[id].ref_pos = vec4(0,0,0,0);
-                    forces[id].pos = particles[id].vel;
-                    forces[id].stress = ZERO;
+                    forces[p_id].mat = mat_id;
+                    forces[p_id].den = 0;
+                    forces[p_id].vel = vec4(0,0,0,0);
+                    forces[p_id].pos = particles[p_id].vel;
+                    stresses[s_id].ref_pos = vec4(0,0,0,0);
+                    stresses[s_id].stress = ZERO;
 
                     //add up each local unit's contributions
                     for(uint i=0; i<shadow; i++) {
-                        forces[id].den += shared_den[i];
-                        forces[id].vel += shared_force[i];
+                        forces[p_id].den += shared_den[i];
+                        forces[p_id].vel += shared_force[i];
                     }
 
                     //get the strain-rate
@@ -524,14 +706,14 @@ glsl!{$
                             // float m = materials[mat_id].thermal_softening;
                             float T = materials[mat_id].relaxation_time;
 
-                            float eq_strain = eq_plastic_strain_sq(particles[id].stress);
+                            float eq_strain = eq_plastic_strain_sq(solids[s_id].stress);
                             float stress_norm = mat_dot(pk2_stress, pk2_stress);
                             // float yield_stress = johnson_cook(eq_strain, 1, A, B, C, n/2);
                             float yield_stress = johnson_cook(eq_strain, 1, A, B, C, n/2);
                             if(yield_stress*yield_stress <= stress_norm) {
                                 stress_norm = sqrt(stress_norm);
                                 // forces[id].stress = pk2_stress * (1 - yield_stress/stress_norm) / T;
-                                forces[id].stress = (stress_norm - yield_stress)/T * (pk2_stress / stress_norm);
+                                stresses[s_id].stress = (stress_norm - yield_stress)/T * (pk2_stress / stress_norm);
                                 // forces[id].stress = ZERO;
                             }
                         }
@@ -539,8 +721,8 @@ glsl!{$
                     }
 
                     //get acceleration from force and gravity
-                    forces[id].vel /= particles[id].den;
-                    forces[id].vel += vec4(0,-g,0,0);
+                    forces[p_id].vel /= particles[p_id].den;
+                    forces[p_id].vel += vec4(0,-g,0,0);
 
 
                 }
@@ -566,6 +748,7 @@ glsl!{$
             extern struct AABB;
             extern struct Material;
             extern struct Particle;
+            extern struct SolidParticle;
             extern struct Bucket;
             extern struct Index;
 
@@ -576,6 +759,7 @@ glsl!{$
             extern vec4 grad_w(vec4 r, float h, float k);
 
             layout(std430) buffer particle_list { readonly restrict Particle particles[]; };
+            layout(std430) buffer solid_particle_list { readonly restrict SolidParticle solids[]; };
             layout(std430) buffer material_list { readonly restrict Material materials[]; };
             layout(std430) buffer index_list { readonly restrict Index indices[]; };
 
@@ -613,18 +797,19 @@ glsl!{$
 
             void main() {
 
-                uint id = gl_WorkGroupID.x;
+                uint s_id = gl_WorkGroupID.x;
+                uint p_id = solids[s_id].part_id;
                 uint gid = gl_LocalInvocationIndex;
 
                 if(gid==0) {
-                    strains[id][0] = ZERO;
-                    strains[id][1] = ZERO;
-                    strains[id][2] = ZERO;
+                    strains[s_id][0] = ZERO;
+                    strains[s_id][1] = ZERO;
+                    strains[s_id][2] = ZERO;
                 }
                 barrier();
 
                 //if this isn't an elastic particle, leave
-                if(is_elastic(id)) {
+                if(is_elastic(p_id)) {
 
                     //ids for splitting the for loops
                     uint sublocal_id = gl_LocalInvocationID.x/3;
@@ -634,7 +819,7 @@ glsl!{$
                     deformation[gid] = ZERO;
                     def_rate[gid] = ZERO;
 
-                    ivec3 b_pos = local_bucket_pos(indices[id].ref_index);
+                    ivec3 b_pos = local_bucket_pos(indices[p_id].ref_index);
                     bool in_bounds = in_bounds(b_pos, subdivisions);
 
                     if(in_bounds) {
@@ -644,10 +829,11 @@ glsl!{$
 
                         //first, we need to compute the correction
                         for(uint i=start+sublocal_id; i<end; i+=num_sublocal) {
-                            uint id2 = particle_index(b_id, i);
-                            if(is_elastic(id2)) {
-                                float V2 = materials[particles[id2].mat].mass / particles[id2].den;
-                                vec4 dX = particles[id2].ref_pos - particles[id].ref_pos;
+                            uint p_id2 = particle_index(b_id, i);
+                            uint s_id2 = particles[p_id2].solid_id;
+                            if(is_elastic(p_id2)) {
+                                float V2 = materials[particles[p_id2].mat].mass / particles[p_id2].den;
+                                vec4 dX = solids[s_id2].ref_pos - solids[s_id].ref_pos;
 
                                 correction[gid] += V2*outerProduct(grad_w(dX, h, norm_const), dX);
                             }
@@ -679,13 +865,14 @@ glsl!{$
 
                         //next, we get the gradients to compute the correction
                         for(uint i=start+sublocal_id; i<end; i+=num_sublocal) {
-                            uint id2 = particle_index(b_id, i);
-                            if(!is_elastic(id2)) continue;
+                            uint p_id2 = particle_index(b_id, i);
+                            uint s_id2 = particles[p_id2].solid_id;
+                            if(!is_elastic(p_id2)) continue;
 
-                            float V2 = materials[particles[id2].mat].mass / particles[id2].den;
-                            vec4 dX = particles[id2].ref_pos - particles[id].ref_pos;
-                            vec4 dx = particles[id2].pos - particles[id].pos;
-                            vec4 dv = particles[id2].vel - particles[id].vel;
+                            float V2 = materials[particles[p_id2].mat].mass / particles[p_id2].den;
+                            vec4 dX = solids[s_id2].ref_pos - solids[s_id].ref_pos;
+                            vec4 dx = particles[p_id2].pos - particles[p_id].pos;
+                            vec4 dv = particles[p_id2].vel - particles[p_id].vel;
                             vec4 grad = correction[0] * grad_w(dX, h, norm_const);
 
                             deformation[gid] += V2 * outerProduct(dx, grad);
@@ -706,9 +893,9 @@ glsl!{$
                     }
 
                     if(gid==0) {
-                        strains[id][0] = correction[0];
-                        strains[id][1] = deformation[0];
-                        strains[id][2] = def_rate[0];
+                        strains[s_id][0] = correction[0];
+                        strains[s_id][1] = deformation[0];
+                        strains[s_id][2] = def_rate[0];
                     }
 
                 }
@@ -738,6 +925,7 @@ glsl!{$
 
                 let mut dest = p.mirror();
                 let particles = p.particles();
+                let solids = p.solids();
                 let materials = p.materials();
 
                 //NOTE: we know for CERTAIN that neither of these are modified by the shader,
@@ -745,12 +933,13 @@ glsl!{$
 
                 let ub_mat: &mut Materials = ::std::mem::transmute::<&Materials,&mut Materials>(materials);
                 let ub = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(&*particles);
+                let ub_s = ::std::mem::transmute::<&SolidParticleBuffer,&mut SolidParticleBuffer>(&*solids);
                 let ub_bound = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(p.boundary());
 
                 prof.new_segment("Forces".to_owned());
 
-                let mut strains = Buffer::<[[mat4;3]],Read>::uninitialized(&particles.gl_provider(), particles.len());
-                strain.compute(strains.len() as u32, 1, 1, ub, ub_mat, indices, &mut strains, buckets);
+                let mut strains = Buffer::<[[mat4;3]],Read>::uninitialized(&particles.gl_provider(), solids.len());
+                strain.compute(strains.len() as u32, 1, 1, ub, ub_s, ub_mat, indices, &mut strains, buckets);
 
                 // gl::Finish();
                 //
@@ -765,9 +954,11 @@ glsl!{$
                 //
                 // gl::Finish();
 
+                let (mut dest_p, mut dest_s) = dest.all_particles_mut();
+
                 force.compute(
                     p.particles().len() as u32, 1, 1,
-                    ub, ub_bound, &mut *dest.particles_mut(),
+                    ub, ub_s, ub_bound, dest_p, dest_s,
                     ub_mat, &mut strains,
                     indices, buckets
                 );

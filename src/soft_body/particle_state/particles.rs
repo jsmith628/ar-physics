@@ -68,10 +68,10 @@ macro_rules! gen_lin_comb{
                         $(else if(id < $p2.length()) {dst[id].mat = $p2[id].mat;})*
 
                         dst[id].den = (id<$p0.length() ? $r0*$p0[id].den : 0) $(+(id<$p2.length() ? $r2*$p2[id].den : 0))*;
-                        dst[id].ref_pos = (id<$p0.length() ? $r0*$p0[id].ref_pos : VZERO) $(+(id<$p2.length() ? $r2*$p2[id].ref_pos : VZERO))*;
+                        // dst[id].ref_pos = (id<$p0.length() ? $r0*$p0[id].ref_pos : VZERO) $(+(id<$p2.length() ? $r2*$p2[id].ref_pos : VZERO))*;
                         dst[id].pos = (id<$p0.length() ? $r0*$p0[id].pos : VZERO) $(+(id<$p2.length() ? $r2*$p2[id].pos : VZERO))*;
                         dst[id].vel = (id<$p0.length() ? $r0*$p0[id].vel : VZERO) $(+(id<$p2.length() ? $r2*$p2[id].vel : VZERO))*;
-                        dst[id].stress = (id<$p0.length() ? $r0*$p0[id].stress : MZERO) $(+(id<$p2.length() ? $r2*$p2[id].stress : MZERO))*;
+                        // dst[id].stress = (id<$p0.length() ? $r0*$p0[id].stress : MZERO) $(+(id<$p2.length() ? $r2*$p2[id].stress : MZERO))*;
 
                     }
             }
@@ -123,10 +123,10 @@ macro_rules! gen_lin_comb{
                     void main() {
                         uint id = gl_GlobalInvocationID.x;
                         $p0[id].den = $r0*$p0[id].den $( + $r2*$p2[id].den)*;
-                        $p0[id].ref_pos = $r0*$p0[id].ref_pos $( + $r2*$p2[id].ref_pos)*;
+                        // $p0[id].ref_pos = $r0*$p0[id].ref_pos $( + $r2*$p2[id].ref_pos)*;
                         $p0[id].pos = $r0*$p0[id].pos $( + $r2*$p2[id].pos)*;
                         $p0[id].vel = $r0*$p0[id].vel $( + $r2*$p2[id].vel)*;
-                        $p0[id].stress = $r0*$p0[id].stress $( + $r2*$p2[id].stress)*;
+                        // $p0[id].stress = $r0*$p0[id].stress $( + $r2*$p2[id].stress)*;
                     }
             }
         }
@@ -176,10 +176,10 @@ glsl!{$
                 uint id = gl_GlobalInvocationID.x;
                 dest[id].mat = part[id].mat;
                 dest[id].den = 0.0;
-                dest[id].ref_pos = vec4(0.0,0.0,0.0,0.0);
+                // dest[id].ref_pos = vec4(0.0,0.0,0.0,0.0);
                 dest[id].pos = r1*part[id].vel;
                 dest[id].vel = vec4(0.0,0.0,0.0,0.0);
-                dest[id].stress = mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0));
+                // dest[id].stress = mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0));
             }
     }
 
@@ -214,10 +214,10 @@ glsl!{$
             void main() {
                 uint id = gl_GlobalInvocationID.x;
                 part[id].den = 0.0;
-                part[id].ref_pos = vec4(0.0,0.0,0.0,0.0);
+                // part[id].ref_pos = vec4(0.0,0.0,0.0,0.0);
                 part[id].pos = r1*part[id].vel;
                 part[id].vel = vec4(0.0,0.0,0.0,0.0);
-                part[id].stress = mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0));
+                // part[id].stress = mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0));
             }
     }
 
@@ -534,6 +534,10 @@ impl Particles {
     pub fn solids(&self) -> &SolidParticleBuffer { &self.solids }
     pub fn solids_mut(&mut self) -> &mut SolidParticleBuffer { &mut self.solids }
     pub fn materials(&self) -> &Materials { &self.materials }
+
+    pub fn all_particles_mut(&mut self) -> (&mut ParticleBuffer, &mut SolidParticleBuffer) {
+        (&mut self.buf, &mut self.solids)
+    }
 
     pub fn add_particles(&mut self, material: Material, mut particles: Box<[Particle]>) {
         if particles.len()==0 {return;}

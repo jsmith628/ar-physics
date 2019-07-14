@@ -11,7 +11,7 @@ use crate::soft_body::*;
 use self::particles::*;
 use self::buf_vec::*;
 
-pub use particles::{Particles, ParticleBuffer, ParticleVec};
+pub use particles::{Particles, ParticleBuffer, ParticleVec, SolidParticleBuffer};
 
 mod particles;
 pub mod buf_vec;
@@ -24,19 +24,14 @@ glsl!{$
             public struct Particle {
                 float den;
                 uint mat, solid_id;
-                vec4 ref_pos;
                 vec4 pos;
                 vec4 vel;
-                mat4 stress;
             };
 
             public struct SolidParticle {
                 uint part_id;
                 vec4 ref_pos;
                 mat4 stress;
-                mat4 correction;
-                mat4 strain;
-                mat4 strain_rate;
             }
 
         @Rust
@@ -52,10 +47,8 @@ glsl!{$
                     Particle {
                         den: 0.0,
                         mat: 0, solid_id: !0,
-                        ref_pos: pos,
                         pos: pos,
                         vel: vel,
-                        stress: [[0.0,0.0,0.0,0.0],[0.0,k,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0]].into()
                     }
                 }
             }
@@ -66,9 +59,6 @@ glsl!{$
                     SolidParticle {
                         part_id: id,
                         ref_pos: pos,
-                        correction: [[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0]].into(),
-                        strain: [[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0]].into(),
-                        strain_rate: [[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0]].into(),
                         stress: [[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0]].into()
                     }
                 }

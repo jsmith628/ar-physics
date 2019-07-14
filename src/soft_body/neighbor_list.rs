@@ -37,7 +37,7 @@ glsl! {$
     mod fill_buckets {
         @Rust
             use super::{Bucket, Index, bucket_index};
-            use crate::soft_body::particle_state::Particle;
+            use crate::soft_body::particle_state::{Particle,SolidParticle};
             use crate::soft_body::material_region::AABB;
         @Compute
             #version 460
@@ -53,10 +53,12 @@ glsl! {$
 
             extern struct AABB;
             extern struct Particle;
+            extern struct SolidParticle;
             extern struct Bucket;
             extern struct Index;
 
             layout(std430) buffer particle_list { readonly restrict Particle particles[]; };
+            layout(std430) buffer solid_particle_list { readonly restrict SolidParticle solids[]; };
             layout(std430) buffer index_list { writeonly restrict Index indices[]; };
 
             layout(std430) buffer neighbor_list {
@@ -72,8 +74,9 @@ glsl! {$
             void main() {
                 uint id = gl_GlobalInvocationID.x;
                 if(id > particles.length()) return;
+                uint s_id = particles[id].solid_id;
 
-                vec4 pos = mode==REFERENCE ? particles[id].ref_pos : particles[id].pos;
+                vec4 pos = mode==REFERENCE ? solids[s_id].ref_pos : particles[id].pos;
 
                 if((any(isnan(pos)) || any(isinf(pos)))) {
                     if(mode==POSITION) {
@@ -232,6 +235,9 @@ impl NeighborList {
         #[allow(mutable_transmutes)]
         let ub: &mut ParticleBuffer = unsafe { ::std::mem::transmute(particles.particles()) };
 
+        #[allow(mutable_transmutes)]
+        let ub_s: &mut SolidParticleBuffer = unsafe { ::std::mem::transmute(particles.solids()) };
+
         #[inline] fn units(p:u32) -> u32 { (p as f32 / GRP_SIZE as f32).ceil() as u32}
 
         if !self.boundary.upgrade().map_or(false, |b| &*b as *const ParticleBuffer == particles.boundary() as *const ParticleBuffer) {
@@ -249,7 +255,7 @@ impl NeighborList {
             *self.bucket_fill.mode = 0;
             self.bucket_fill.compute(
                 units(ub_boundary.len() as GLuint), 1, 1,
-                ub_boundary, self.indices.as_mut().unwrap(), &mut self.buckets
+                ub_boundary, ub_s, self.indices.as_mut().unwrap(), &mut self.buckets
             );
         }
 
@@ -260,7 +266,7 @@ impl NeighborList {
             *self.bucket_fill.mode = 1;
             self.bucket_fill.compute(
                 units(ub.len() as GLuint), 1, 1,
-                ub, self.indices.as_mut().unwrap(), &mut self.buckets
+                ub, ub_s, self.indices.as_mut().unwrap(), &mut self.buckets
             );
 
         } else {
@@ -271,7 +277,7 @@ impl NeighborList {
         *self.bucket_fill.mode = 2;
         self.bucket_fill.compute(
             units(ub.len() as GLuint), 1, 1,
-            ub, self.indices.as_mut().unwrap(), &mut self.buckets
+            ub, ub_s, self.indices.as_mut().unwrap(), &mut self.buckets
         );
 
         if reset {

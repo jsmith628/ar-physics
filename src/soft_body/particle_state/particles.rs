@@ -433,6 +433,7 @@ impl ArithShaders {
 
                 Particles {
                     buf: p,
+                    solids: latest.solids.clone(),
                     boundary: latest.boundary.clone(),
                     materials: latest.materials.clone(),
                     time_id: latest.time_id
@@ -444,6 +445,7 @@ impl ArithShaders {
     pub fn velocity<'a>(&self, term: (GLfloat, &'a Particles)) -> Particles {
         Particles {
             buf: (self.vel)(&(term.0, term.1.particles())),
+            solids: term.1.solids.clone(),
             boundary: term.1.boundary.clone(),
             materials: term.1.materials.clone(),
             time_id: term.1.time_id
@@ -460,14 +462,52 @@ pub type ParticleVec = BufVec<[Particle]>;
 #[derive(Clone)]
 pub struct Particles {
     buf: ParticleBuffer,
+    solids: SolidParticleBuffer,
     boundary: Rc<ParticleBuffer>,
     materials: Rc<Materials>,
     time_id: GLuint
 }
 
+unsafe fn add_to_buffer<T:Copy>(old: &Buffer<[T],ReadWrite>, extra: Box<[T]>) -> Buffer<[T],ReadWrite> {
+    let mut new_buf = Buffer::<[_],_>::uninitialized(&old.gl_provider(), old.len() + extra.len());
+
+    gl::BindBuffer(gl::COPY_READ_BUFFER, old.id());
+    gl::BindBuffer(gl::COPY_WRITE_BUFFER, new_buf.id());
+
+    gl::CopyBufferSubData(
+        gl::COPY_READ_BUFFER, gl::COPY_WRITE_BUFFER,
+        0, 0, old.data_size() as GLsizeiptr
+    );
+
+    gl::BindBuffer(gl::COPY_READ_BUFFER, 0);
+    gl::BindBuffer(gl::COPY_WRITE_BUFFER, 0);
+
+    let len = new_buf.len();
+    new_buf.map_mut()[old.len()..len].copy_from_slice(&extra);
+
+    new_buf
+}
+
 impl Particles {
-    pub fn new(gl: &GLProvider, materials: Box<[Material]>, particles: Box<[Particle]>, boundary: Box<[Particle]>) -> Self {
+
+    fn init_solid_particles(particles: &mut [Particle], materials: &[Material], offset:usize) -> Box<[SolidParticle]> {
+        let mut result = Vec::new();
+
+        for p in particles {
+            if materials[p.mat as usize].normal_stiffness!=0.0 || materials[p.mat as usize].shear_stiffness!=0.0 {
+                p.solid_id = (result.len()+offset) as GLuint;
+                result.push(SolidParticle::with_ref_pos(p.pos));
+            }
+        }
+
+        if result.len() == 0 { result.push(SolidParticle::with_ref_pos([0.0,0.0,0.0,0.0].into())) }
+
+        result.into_boxed_slice()
+    }
+
+    pub fn new(gl: &GLProvider, materials: Box<[Material]>, mut particles: Box<[Particle]>, boundary: Box<[Particle]>) -> Self {
         Particles{
+            solids: Buffer::from_box(gl, Self::init_solid_particles(&mut particles, &materials, 0)),
             buf: Buffer::from_box(gl, particles),
             boundary: Rc::new(Buffer::from_box(gl, boundary)),
             materials: Rc::new(Buffer::from_box(gl, materials)),
@@ -478,6 +518,7 @@ impl Particles {
     pub unsafe fn mirror(&self) -> Self {
         Particles {
             buf: Buffer::<[_],_>::uninitialized(&self.buf.gl_provider(), self.buf.len()),
+            solids: Buffer::<[_],_>::uninitialized(&self.solids.gl_provider(), self.solids.len()),
             boundary: self.boundary.clone(),
             materials: self.materials.clone(),
             time_id: self.time_id
@@ -508,50 +549,30 @@ impl Particles {
             x.mat = mat_id as GLuint;
         }
 
+        //add the new material, if it needs to be added
+        if mat_id == self.materials.len() {
+            unsafe {
+                let mut new_mat = add_to_buffer(self.materials(), Box::new([material]));
+                self.time_id += 1; //make this material list the new global one
+                self.materials = Rc::new(new_mat);
+            }
+        }
+
+        let solid_particles = Self::init_solid_particles(&mut particles, &self.materials().map(), self.solids.len());
+
         unsafe {
             use gl_struct::gl;
 
             //add the particles to the buffer
 
-            let mut new_buf = ParticleBuffer::uninitialized(&self.buf.gl_provider(), self.buf.len() + particles.len());
-
-            gl::BindBuffer(gl::COPY_READ_BUFFER, self.buf.id());
-            gl::BindBuffer(gl::COPY_WRITE_BUFFER, new_buf.id());
-
-            gl::CopyBufferSubData(
-                gl::COPY_READ_BUFFER, gl::COPY_WRITE_BUFFER,
-                0, 0, self.buf.data_size() as GLsizeiptr
-            );
-
-            gl::BindBuffer(gl::COPY_READ_BUFFER, 0);
-            gl::BindBuffer(gl::COPY_WRITE_BUFFER, 0);
-
-            let len = new_buf.len();
-            new_buf.map_mut()[self.buf.len()..len].copy_from_slice(&particles);
-
-            //add the new material, if it needs to be added
-            if mat_id == self.materials.len() {
-                let mut new_mat = Materials::uninitialized(&self.buf.gl_provider(), self.materials.len() + 1);
-
-                gl::BindBuffer(gl::COPY_READ_BUFFER, self.materials.id());
-                gl::BindBuffer(gl::COPY_WRITE_BUFFER, new_mat.id());
-
-                gl::CopyBufferSubData(
-                    gl::COPY_READ_BUFFER, gl::COPY_WRITE_BUFFER,
-                    0, 0, self.materials.data_size() as GLsizeiptr
-                );
-
-                gl::BindBuffer(gl::COPY_READ_BUFFER, 0);
-                gl::BindBuffer(gl::COPY_WRITE_BUFFER, 0);
-
-                new_mat.map_mut()[self.materials.len()] = material;
-
-                self.time_id += 1; //make this material list the new global one
-                self.materials = Rc::new(new_mat);
-
-            }
-
+            let mut new_buf = add_to_buffer(&self.buf, particles);
             self.buf = new_buf;
+
+            //add the solid particles to the buffer
+
+            let mut new_buf = add_to_buffer(&self.solids, solid_particles);
+            self.solids = new_buf;
+
         }
 
     }

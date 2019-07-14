@@ -55,6 +55,17 @@ glsl!{$
                     }
                 }
             }
+
+            impl SolidParticle {
+
+                pub fn with_ref_pos(pos: vec4) -> Self {
+                    SolidParticle {
+                        ref_pos: pos,
+                        stress: [[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0],[0.0,0.0,0.0,0.0]].into()
+                    }
+                }
+
+            }
     }
 
 }

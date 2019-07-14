@@ -445,6 +445,7 @@ impl ArithShaders {
 
 
 pub type ParticleBuffer = Buffer<[Particle], ReadWrite>;
+pub type SolidParticleBuffer = Buffer<[SolidParticle], ReadWrite>;
 pub type ParticleVec = BufVec<[Particle]>;
 
 #[derive(Clone)]

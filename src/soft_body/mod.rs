@@ -467,7 +467,7 @@ glsl!{$
                         shared_den[gid] += shared_den[gid+shadow] + shared_den[gid+shadow*2];
                         shared_force[gid] += shared_force[gid+shadow] + shared_force[gid+shadow*2];
                     }
-                    barrier();
+                    memoryBarrierShared();
                 }
 
                 if(gid==0) {
@@ -662,7 +662,7 @@ glsl!{$
                         if(gid<shadow) {
                             correction[gid] += correction[gid+shadow] + correction[gid+shadow*2];
                         }
-                        barrier();
+                        memoryBarrierShared();
                     }
 
                     //invert the correction matrix
@@ -702,7 +702,7 @@ glsl!{$
                             deformation[gid] += deformation[gid+shadow] + deformation[gid+shadow*2];
                             def_rate[gid] += def_rate[gid+shadow] + def_rate[gid+shadow*2];
                         }
-                        barrier();
+                        memoryBarrierShared();
                     }
 
                     if(gid==0) {
@@ -904,17 +904,31 @@ impl FluidSim {
     pub fn add_particles(&mut self, obj: MaterialRegion, offset: Option<vec4>) {
         let (mut p, mat) = obj.gen_particles(*self.force.borrow().h, self.materials.len() as GLuint);
 
+        let mat_id = {
+            let mut i = 0;
+            for material in self.materials.map().iter() {
+                if mat == *material {
+                    break;
+                }
+                i += 1;
+            }
+            if i == self.materials.len() { None } else {Some(i)}
+        };
+
         if let Some(t) = offset {
             for x in p.iter_mut() {
                 x.pos[0] += t[0];
                 x.pos[1] += t[1];
                 x.pos[2] += t[2];
                 x.pos[3] += t[3];
+                if let Some(i) = mat_id { x.mat = i as GLuint; }
             }
         }
 
         self.state[0].map_mut(|particles| particles.add_particles(p.into_boxed_slice()));
         self.particles = self.state[0].clone().map_into(|p| p).unwrap();
+
+        if let Some(_) = mat_id {return;}
 
         unsafe {
             use gl_struct::gl;

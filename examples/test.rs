@@ -573,9 +573,6 @@ fn main() {
                         shader.c1[mat_number] = *color;
                         shader.c2[mat_number] = *color;
                         shader.c3[mat_number] = *color;
-                        mat_number += 1;
-
-
 
                         let offset = match relative {
                             true => Some([
@@ -608,10 +605,10 @@ fn main() {
 
                 let n = w.particles().particles().len();
                 let m = w.particles().boundary().len();
-                let (den, mat,ref_pos, pos, vel, _) = Particle::get_attributes(&w.particles().boundary());
+                let (den, mat,_,ref_pos, pos, vel, _) = Particle::get_attributes(&w.particles().boundary());
                 shader.draw(&mut context, DrawMode::Points, m, den, mat, ref_pos, pos, vel);
 
-                let (den, mat,ref_pos, pos, vel, _) = Particle::get_attributes(&*particles);
+                let (den, mat,_,ref_pos, pos, vel, _) = Particle::get_attributes(&*particles);
                 shader.draw(&mut context, DrawMode::Points, n, den, mat, ref_pos, pos, vel);
 
             }

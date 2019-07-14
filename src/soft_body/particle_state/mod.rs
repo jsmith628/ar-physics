@@ -23,12 +23,17 @@ glsl!{$
 
             public struct Particle {
                 float den;
-                uint mat;
+                uint mat, solid_id;
                 vec4 ref_pos;
                 vec4 pos;
                 vec4 vel;
                 mat4 stress;
             };
+
+            public struct SolidParticle {
+                vec4 ref_pos;
+                mat4 stress;
+            }
 
         @Rust
 
@@ -42,7 +47,7 @@ glsl!{$
                     let k = 0.0;
                     Particle {
                         den: 0.0,
-                        mat: 0,
+                        mat: 0, solid_id: !0,
                         ref_pos: pos,
                         pos: pos,
                         vel: vel,

@@ -724,7 +724,6 @@ glsl!{$
         force: &mut compute_force::Program,
         strain: &mut compute_strain::Program,
         buckets: &mut NeighborList,
-        materials: &Materials,
         particles: ParticleState
     ) -> ParticleState {
 
@@ -739,6 +738,7 @@ glsl!{$
 
                 let mut dest = p.mirror();
                 let particles = p.particles();
+                let materials = p.materials();
 
                 //NOTE: we know for CERTAIN that neither of these are modified by the shader,
                 //so against all warnings, we are going to transmute them to mutable
@@ -794,7 +794,6 @@ pub struct FluidSim {
     state: Box<[ParticleState]>,
 
     //data for update logistics
-    materials: Materials,
     neighbor_list: RefCell<NeighborList>,
 
     //shaders
@@ -863,7 +862,6 @@ impl FluidSim {
             subticks: subticks,
 
             time: 0.0,
-            materials: Buffer::from_box(gl, materials.clone().into_boxed_slice()),
             particles: Particles::new(gl, materials.into_boxed_slice(), particles.into_boxed_slice(), boundary.into_boxed_slice()),
             state: Vec::new().into_boxed_slice(),
 
@@ -902,18 +900,7 @@ impl FluidSim {
     }
 
     pub fn add_particles(&mut self, obj: MaterialRegion, offset: Option<vec4>) {
-        let (mut p, mat) = obj.gen_particles(*self.force.borrow().h, self.materials.len() as GLuint);
-
-        let mat_id = {
-            let mut i = 0;
-            for material in self.materials.map().iter() {
-                if mat == *material {
-                    break;
-                }
-                i += 1;
-            }
-            if i == self.materials.len() { None } else {Some(i)}
-        };
+        let (mut p, mat) = obj.gen_particles(*self.force.borrow().h, 0);
 
         if let Some(t) = offset {
             for x in p.iter_mut() {
@@ -921,40 +908,11 @@ impl FluidSim {
                 x.pos[1] += t[1];
                 x.pos[2] += t[2];
                 x.pos[3] += t[3];
-                if let Some(i) = mat_id { x.mat = i as GLuint; }
             }
         }
 
-        self.state[0].map_mut(|particles| particles.add_particles(p.into_boxed_slice()));
+        self.state[0].map_mut(|particles| particles.add_particles(mat, p.into_boxed_slice()));
         self.particles = self.state[0].clone().map_into(|p| p).unwrap();
-
-        if let Some(_) = mat_id {return;}
-
-        unsafe {
-            use gl_struct::gl;
-            use std::mem::size_of;
-
-            let mut new_buf = Buffer::<[_],ReadWrite>::uninitialized(&self.materials.gl_provider(), self.materials.len() + 1);
-
-            gl::BindBuffer(gl::COPY_READ_BUFFER, self.materials.id());
-            gl::BindBuffer(gl::COPY_WRITE_BUFFER, new_buf.id());
-
-            gl::CopyBufferSubData(
-                gl::COPY_READ_BUFFER, gl::COPY_WRITE_BUFFER,
-                0, 0, self.materials.data_size() as GLsizeiptr
-            );
-
-            gl::BindBuffer(gl::COPY_READ_BUFFER, 0);
-            gl::BindBuffer(gl::COPY_WRITE_BUFFER, 0);
-
-            new_buf.map_mut()[self.materials.len()] = mat;
-
-            for m in new_buf.read_into_box().into_iter() {
-                println!("{:?}", m);
-            }
-
-            self.materials = new_buf;
-        }
 
     }
 
@@ -965,7 +923,6 @@ impl ::ar_engine::engine::Component for FluidSim {
     #[inline]
     fn init(&mut self) {
         let neighbors = &self.neighbor_list;
-        let materials = &self.materials;
         let forces = &self.force;
         let strains = &self.strain;
 
@@ -977,7 +934,6 @@ impl ::ar_engine::engine::Component for FluidSim {
                 &mut forces.borrow_mut(),
                 &mut strains.borrow_mut(),
                 &mut neighbors.borrow_mut(),
-                materials,
                 state
             )
         );
@@ -992,7 +948,6 @@ impl ::ar_engine::engine::Component for FluidSim {
             self.time += dt;
 
             let neighbors = &self.neighbor_list;
-            let materials = &self.materials;
             let forces = &self.force;
             let strains = &self.strain;
 
@@ -1005,7 +960,6 @@ impl ::ar_engine::engine::Component for FluidSim {
                     &mut forces.borrow_mut(),
                     &mut strains.borrow_mut(),
                     &mut neighbors.borrow_mut(),
-                    materials,
                     state
                 )
             ).map_into(|p| p).unwrap();

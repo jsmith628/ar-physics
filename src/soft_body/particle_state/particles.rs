@@ -426,10 +426,16 @@ impl ArithShaders {
     pub fn linear_combination<'a>(&self, terms: Vec<(GLfloat, &'a Particles)>) -> Option<Particles> {
         self.reduce_ref(terms.iter().map(|(r,p)| (*r,p.particles())).collect()).map(
             |p| {
+
+                let latest = terms.iter().fold(terms[0].1,
+                    |m,p| if p.1.time_id > m.time_id {p.1} else {m}
+                );
+
                 Particles {
                     buf: p,
-                    boundary: terms[0].1.boundary.clone(),
-                    materials: terms[0].1.materials.clone()
+                    boundary: latest.boundary.clone(),
+                    materials: latest.materials.clone(),
+                    time_id: latest.time_id
                 }
             }
         )
@@ -439,7 +445,8 @@ impl ArithShaders {
         Particles {
             buf: (self.vel)(&(term.0, term.1.particles())),
             boundary: term.1.boundary.clone(),
-            materials: term.1.materials.clone()
+            materials: term.1.materials.clone(),
+            time_id: term.1.time_id
         }
     }
 
@@ -454,7 +461,8 @@ pub type ParticleVec = BufVec<[Particle]>;
 pub struct Particles {
     buf: ParticleBuffer,
     boundary: Rc<ParticleBuffer>,
-    materials: Rc<Materials>
+    materials: Rc<Materials>,
+    time_id: GLuint
 }
 
 impl Particles {
@@ -462,7 +470,8 @@ impl Particles {
         Particles{
             buf: Buffer::from_box(gl, particles),
             boundary: Rc::new(Buffer::from_box(gl, boundary)),
-            materials: Rc::new(Buffer::from_box(gl, materials))
+            materials: Rc::new(Buffer::from_box(gl, materials)),
+            time_id: 0
         }
     }
 
@@ -470,7 +479,8 @@ impl Particles {
         Particles {
             buf: Buffer::<[_],_>::uninitialized(&self.buf.gl_provider(), self.buf.len()),
             boundary: self.boundary.clone(),
-            materials: self.materials.clone()
+            materials: self.materials.clone(),
+            time_id: self.time_id
         }
     }
 
@@ -478,12 +488,30 @@ impl Particles {
     pub fn boundary_weak(&self) -> Weak<ParticleBuffer> {Rc::downgrade(&self.boundary.clone())}
     pub fn particles(&self) -> &ParticleBuffer { &self.buf }
     pub fn particles_mut(&mut self) -> &mut ParticleBuffer { &mut self.buf }
+    pub fn materials(&self) -> &Materials { &self.materials }
 
-    pub fn add_particles(&mut self, particles: Box<[Particle]>) {
+    pub fn add_particles(&mut self, material: Material, mut particles: Box<[Particle]>) {
         if particles.len()==0 {return;}
+
+        let mat_id = {
+            let mut i = 0;
+            for mat in self.materials.map().iter() {
+                if material == *mat {
+                    break;
+                }
+                i += 1;
+            }
+            i
+        };
+
+        for x in particles.iter_mut() {
+            x.mat = mat_id as GLuint;
+        }
 
         unsafe {
             use gl_struct::gl;
+
+            //add the particles to the buffer
 
             let mut new_buf = ParticleBuffer::uninitialized(&self.buf.gl_provider(), self.buf.len() + particles.len());
 
@@ -494,21 +522,34 @@ impl Particles {
                 gl::COPY_READ_BUFFER, gl::COPY_WRITE_BUFFER,
                 0, 0, self.buf.data_size() as GLsizeiptr
             );
-            //
-            //
-            //
-            // gl::BufferSubData(
-            //     gl::COPY_WRITE_BUFFER,
-            //     self.buf.data_size() as GLsizeiptr,
-            //     (new_buf.data_size()-self.buf.data_size()) as GLsizeiptr,
-            //     &particles[0] as *const Particle as *const GLvoid
-            // );
 
             gl::BindBuffer(gl::COPY_READ_BUFFER, 0);
             gl::BindBuffer(gl::COPY_WRITE_BUFFER, 0);
 
             let len = new_buf.len();
             new_buf.map_mut()[self.buf.len()..len].copy_from_slice(&particles);
+
+            //add the new material, if it needs to be added
+            if mat_id == self.materials.len() {
+                let mut new_mat = Materials::uninitialized(&self.buf.gl_provider(), self.materials.len() + 1);
+
+                gl::BindBuffer(gl::COPY_READ_BUFFER, self.materials.id());
+                gl::BindBuffer(gl::COPY_WRITE_BUFFER, new_mat.id());
+
+                gl::CopyBufferSubData(
+                    gl::COPY_READ_BUFFER, gl::COPY_WRITE_BUFFER,
+                    0, 0, self.materials.data_size() as GLsizeiptr
+                );
+
+                gl::BindBuffer(gl::COPY_READ_BUFFER, 0);
+                gl::BindBuffer(gl::COPY_WRITE_BUFFER, 0);
+
+                new_mat.map_mut()[self.materials.len()] = material;
+
+                self.time_id += 1; //make this material list the new global one
+                self.materials = Rc::new(new_mat);
+
+            }
 
             self.buf = new_buf;
         }

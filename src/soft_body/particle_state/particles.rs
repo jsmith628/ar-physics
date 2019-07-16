@@ -64,8 +64,12 @@ macro_rules! gen_lin_comb{
 
                         if(id < $p0.length()) {
                             dst[id].mat = $p0[id].mat;
+                            dst[id].solid_id = $p0[id].solid_id;
                         }
-                        $(else if(id < $p2.length()) {dst[id].mat = $p2[id].mat;})*
+                        $(else if(id < $p2.length()) {
+                            dst[id].mat = $p2[id].mat;
+                            dst[id].solid_id = $p2[id].solid_id;
+                        })*
 
                         dst[id].den = (id<$p0.length() ? $r0*$p0[id].den : 0) $(+(id<$p2.length() ? $r2*$p2[id].den : 0))*;
                         // dst[id].ref_pos = (id<$p0.length() ? $r0*$p0[id].ref_pos : VZERO) $(+(id<$p2.length() ? $r2*$p2[id].ref_pos : VZERO))*;
@@ -83,23 +87,24 @@ macro_rules! gen_lin_comb{
                     use std::cell::RefCell;
 
                     impl Program {
-                        pub(super) fn into_closure(self) -> SumClosure {
+                        pub(super) fn into_closure(self) -> SolidLCClosure {
                             const N: usize = macro_program!([$($r)*] @count @num_expr @return);
                             let shader = RefCell::new(self);
                             Box::new(
-                                move |$r0, mut $p0, arr| {
-                                    let (split, _) = arr.split_at(N-1);
-                                    let len = $p0.len().min(split.iter().fold(usize::max_value(), |l,p| l.min(p.1.len()))) as GLuint;
-                                    if let [$(($r2, $p2)),*] = split {
+                                move |arr| {
+                                    let (split, _) = arr.split_at(N);
+                                    let len = split.iter().fold(usize::min_value(), |l,p| l.max(p.1.len())) as GLuint;
+                                    let gl = split[0].1.gl_provider();
+                                    if let [$(($r, $p)),*] = split {
                                         unsafe {
-                                            let [$($p_alt2),*] = transmute::<[&ParticleBuffer;N-1], [&mut ParticleBuffer;N-1]>([$($p2),*]);
+                                            let mut dest = Buffer::<[_],_>::uninitialized(&gl, len as usize);
+                                            let [$($p_alt),*] = transmute::<[&SolidParticleBuffer;N], [&mut SolidParticleBuffer;N]>([$($p),*]);
 
                                             let mut shdr = shader.borrow_mut();
-                                            *shdr.$r0 = $r0;
-                                            $(*shdr.$r2 = *$r2;)*
+                                            $(*shdr.$r = *$r;)*
 
-                                            shdr.compute(units(len), 1, 1, &mut $p0, $($p_alt2),*);
-                                            return $p0;
+                                            shdr.compute(units(len), 1, 1, $($p_alt),*, &mut dest);
+                                            return dest;
                                         }
                                     }
                                     panic!("Array split too small")
@@ -109,24 +114,30 @@ macro_rules! gen_lin_comb{
                     }
 
                 @Compute
+
                     #version 460
+                    const vec4 VZERO = vec4(0,0,0,0);
+                    const mat4 MZERO = mat4(VZERO,VZERO,VZERO,VZERO);
+
                     layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
-                    extern struct Particle;
+                    extern struct SolidParticle;
 
-                    uniform float $r0 = 0.0;
-                    $(uniform float $r2 = 0.0;)*
-
-                    layout(std430) buffer $p_alt0 {restrict Particle $p0[];};
-                    $(layout(std430) buffer $p_alt2 {readonly Particle $p2[];};)*
+                    $(uniform float $r = 0.0;)*
+                    $(layout(std430) buffer $p_alt {readonly SolidParticle $p[];};)*
+                    layout(std430) buffer dest {writeonly restrict SolidParticle dst[];};
 
                     void main() {
                         uint id = gl_GlobalInvocationID.x;
-                        $p0[id].den = $r0*$p0[id].den $( + $r2*$p2[id].den)*;
-                        // $p0[id].ref_pos = $r0*$p0[id].ref_pos $( + $r2*$p2[id].ref_pos)*;
-                        $p0[id].pos = $r0*$p0[id].pos $( + $r2*$p2[id].pos)*;
-                        $p0[id].vel = $r0*$p0[id].vel $( + $r2*$p2[id].vel)*;
-                        // $p0[id].stress = $r0*$p0[id].stress $( + $r2*$p2[id].stress)*;
+
+                        if(id < $p0.length()) {
+                            dst[id].part_id = $p0[id].part_id;
+                        }
+                        $(else if(id < $p2.length()) {dst[id].part_id = $p2[id].part_id;})*
+
+                        dst[id].ref_pos = (id<$p0.length() ? $r0*$p0[id].ref_pos : VZERO) $(+(id<$p2.length() ? $r2*$p2[id].ref_pos : VZERO))*;
+                        dst[id].stress = (id<$p0.length() ? $r0*$p0[id].stress : MZERO) $(+(id<$p2.length() ? $r2*$p2[id].stress : MZERO))*;
+
                     }
             }
         }
@@ -278,11 +289,11 @@ glsl!{$
 
 }
 
-gen_lin_comb!($ lin_comb_1 sum_1 (r1 p1 _p1) );
-gen_lin_comb!($ lin_comb_2 sum_2 (r1 p1 _p1) (r2 p2 _p2) );
-gen_lin_comb!($ lin_comb_3 sum_3 (r1 p1 _p1) (r2 p2 _p2) (r3 p3 _p3) );
-gen_lin_comb!($ lin_comb_4 sum_4 (r1 p1 _p1) (r2 p2 _p2) (r3 p3 _p3) (r4 p4 _p4) );
-gen_lin_comb!($ lin_comb_5 sum_5 (r1 p1 _p1) (r2 p2 _p2) (r3 p3 _p3) (r4 p4 _p4) (r5 p5 _p5) );
+gen_lin_comb!($ lin_comb_1 s_lin_comb_1 (r1 p1 _p1) );
+gen_lin_comb!($ lin_comb_2 s_lin_comb_2 (r1 p1 _p1) (r2 p2 _p2) );
+gen_lin_comb!($ lin_comb_3 s_lin_comb_3 (r1 p1 _p1) (r2 p2 _p2) (r3 p3 _p3) );
+gen_lin_comb!($ lin_comb_4 s_lin_comb_4 (r1 p1 _p1) (r2 p2 _p2) (r3 p3 _p3) (r4 p4 _p4) );
+gen_lin_comb!($ lin_comb_5 s_lin_comb_5 (r1 p1 _p1) (r2 p2 _p2) (r3 p3 _p3) (r4 p4 _p4) (r5 p5 _p5) );
 
 use super::*;
 use std::rc::Rc;
@@ -292,14 +303,16 @@ pub(self) use super::Particle;
 pub(self) fn units(p: GLuint) -> GLuint { ComplexSubset::ceil((p) as GLfloat / 128.0) as GLuint }
 
 pub(self) type Term<'a> = (GLfloat, &'a ParticleBuffer);
-pub(self) type OwnedTerm = (GLfloat, ParticleBuffer);
+pub(self) type SolidTerm<'a> = (GLfloat, &'a SolidParticleBuffer);
+pub(self) type CombinedTerm<'a> = (GLfloat, &'a ParticleBuffer, &'a SolidParticleBuffer);
+pub(self) type OwnedTerm = (GLfloat, ParticleBuffer, SolidParticleBuffer);
 pub(self) type LCClosure = Box<dyn for<'a> Fn(&'a [Term]) -> ParticleBuffer>;
-pub(self) type SumClosure = Box<dyn for<'a> Fn(GLfloat, ParticleBuffer, &'a [Term<'a>]) -> ParticleBuffer>;
+pub(self) type SolidLCClosure = Box<dyn for<'a> Fn(&'a [SolidTerm]) -> SolidParticleBuffer>;
 
 #[derive(Clone)]
 pub struct ArithShaders {
     lc: Rc<[LCClosure]>,
-    sum: Rc<[SumClosure]>,
+    slc: Rc<[SolidLCClosure]>,
     vel: Rc<dyn for<'a> Fn(&'a Term<'a>) -> ParticleBuffer>,
     vel_mut: Rc<dyn Fn(GLfloat, ParticleBuffer) -> ParticleBuffer>,
     dot: Rc<dot::Program>,
@@ -318,13 +331,13 @@ impl ArithShaders {
                     lin_comb_5::init(gl)?.into_closure(),
                 ]
             ),
-            sum: Rc::new(
+            slc: Rc::new(
                 [
-                    sum_1::init(gl)?.into_closure(),
-                    sum_2::init(gl)?.into_closure(),
-                    sum_3::init(gl)?.into_closure(),
-                    sum_4::init(gl)?.into_closure(),
-                    sum_5::init(gl)?.into_closure(),
+                    s_lin_comb_1::init(gl)?.into_closure(),
+                    s_lin_comb_2::init(gl)?.into_closure(),
+                    s_lin_comb_3::init(gl)?.into_closure(),
+                    s_lin_comb_4::init(gl)?.into_closure(),
+                    s_lin_comb_5::init(gl)?.into_closure(),
                 ]
             ),
             vel: vel::init(gl)?.into_closure().into(),
@@ -348,84 +361,47 @@ impl ArithShaders {
         }
     }
 
-    #[allow(dead_code)]
-    fn reduce<'a>(&self, mut owned: Vec<OwnedTerm>, borrowed: Vec<Term<'a>>) -> Option<ParticleBuffer> {
-        if owned.len()==0 { return self.reduce_ref(borrowed); }
-        if borrowed.len()==0 && owned.len()==1 && owned[0].0==1.0 {
-            return Some(owned.pop().unwrap().1);
-        }
-
-        let cap = (borrowed.len() + owned.len()) / self.lc.len() + 1;
-
-        let mut owned = owned.into_iter();
-        let mut borrowed = borrowed.into_iter();
-
-        let mut new_owned = Vec::with_capacity(cap);
-        let mut new_borrowed = Vec::with_capacity(cap);
-
-        loop {
-
-            if let Some((r0,p0)) = owned.next() {
-                let mut refs = Vec::with_capacity(self.sum.len()-1);
-                let mut ownd = Vec::new();
-
-                while refs.len() < self.sum.len()-1 {
-                    match borrowed.next() {
-                        Some((r,p)) => refs.push((r,p)),
-                        None => break
-                    }
-                }
-
-                while refs.len() < self.sum.len()-1 {
-                    match owned.next() {
-                        Some((r,p)) => ownd.push((r,p)),
-                        None => break
-                    }
-                }
-                ownd.iter().for_each(|(r,p)| refs.push((*r,p)));
-
-                new_owned.push(
-                    (1.0, (self.sum[refs.len()])(
-                        r0,p0,refs.as_slice()
-                    ))
-                );
-            } else {
-                borrowed.for_each(|t| new_borrowed.push(t));
-                break;
-            }
-
-        }
-
-        self.reduce(new_owned, new_borrowed)
-
-    }
-
-    fn reduce_owned(&self, mut terms: Vec<OwnedTerm>) -> Option<ParticleBuffer> {
+    fn reduce_owned(&self, mut terms: Vec<OwnedTerm>) -> Option<(ParticleBuffer,SolidParticleBuffer)> {
         // self.reduce(terms, Vec::new())
         if terms.len() == 0 { return None; }
-        if terms.len() == 1 && terms[0].0 == 1.0 { return Some(terms.pop().unwrap().1); }
+        if terms.len() == 1 && terms[0].0 == 1.0 {
+            let (_, p, s) = terms.pop().unwrap();
+            return Some((p,s));
+        }
         self.reduce_owned(
             terms.chunks(self.lc.len()).map(
                 |arr|
-                (1.0, (self.lc[arr.len()-1])(
-                    arr.iter().map(|(r, b)| (*r, b)).collect::<Vec<_>>().as_slice()
-                ))
+                (1.0,
+                    (self.lc[arr.len()-1])(
+                        arr.iter().map(|(r, b, _)| (*r, b)).collect::<Vec<_>>().as_slice()
+                    ),
+                    (self.slc[arr.len()-1])(
+                        arr.iter().map(|(r, _, b)| (*r, b)).collect::<Vec<_>>().as_slice()
+                    ),
+                )
             ).collect()
         )
     }
 
-    fn reduce_ref<'a>(&self, terms: Vec<Term<'a>>) -> Option<ParticleBuffer> {
+    fn reduce_ref<'a>(&self, terms: Vec<CombinedTerm<'a>>) -> Option<(ParticleBuffer,SolidParticleBuffer)> {
         if terms.len() == 0 { return None; }
         self.reduce_owned(
             terms.chunks(self.lc.len()).map(
-                |arr| (1.0, (self.lc[arr.len()-1])(arr))
+                |arr| (1.0,
+                    (self.lc[arr.len()-1])(
+                        arr.iter().map(|(r, b, _)| (*r, *b)).collect::<Vec<_>>().as_slice()
+                    ),
+                    (self.slc[arr.len()-1])(
+                        arr.iter().map(|(r, _, b)| (*r, *b)).collect::<Vec<_>>().as_slice()
+                    ),
+                )
             ).collect()
         )
     }
 
     pub fn linear_combination<'a>(&self, terms: Vec<(GLfloat, &'a Particles)>) -> Option<Particles> {
-        self.reduce_ref(terms.iter().map(|(r,p)| (*r,p.particles())).collect()).map(
-            |p| {
+        self.reduce_ref(terms.iter().map(|(r,p)| (*r,p.particles(),p.solids())).collect()).map(
+            |(p,s)| {
 
                 let latest = terms.iter().fold(terms[0].1,
                     |m,p| if p.1.time_id > m.time_id {p.1} else {m}
@@ -433,7 +409,7 @@ impl ArithShaders {
 
                 Particles {
                     buf: p,
-                    solids: latest.solids.clone(),
+                    solids: s,
                     boundary: latest.boundary.clone(),
                     materials: latest.materials.clone(),
                     time_id: latest.time_id

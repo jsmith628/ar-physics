@@ -61,6 +61,7 @@ macro_rules! gen_lin_comb{
 
                     void main() {
                         uint id = gl_GlobalInvocationID.x;
+                        if(id > dst.length()) return;
 
                         if(id < $p0.length()) {
                             dst[id].mat = $p0[id].mat;
@@ -129,6 +130,7 @@ macro_rules! gen_lin_comb{
 
                     void main() {
                         uint id = gl_GlobalInvocationID.x;
+                        if(id > dst.length()) return;
 
                         if(id < $p0.length()) {
                             dst[id].part_id = $p0[id].part_id;
@@ -186,28 +188,34 @@ glsl!{$
             void main() {
                 uint id = gl_GlobalInvocationID.x;
                 dest[id].mat = part[id].mat;
+                dest[id].solid_id = part[id].solid_id;
                 dest[id].den = 0.0;
-                // dest[id].ref_pos = vec4(0.0,0.0,0.0,0.0);
                 dest[id].pos = r1*part[id].vel;
                 dest[id].vel = vec4(0.0,0.0,0.0,0.0);
-                // dest[id].stress = mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0));
             }
     }
 
-    mod vel_mut {
+    mod vel_solid {
         @Rust
             use super::*;
+            use std::mem::transmute;
             use std::cell::RefCell;
 
             impl Program {
-                pub(super) fn into_closure(self) -> Box<dyn Fn(GLfloat, ParticleBuffer) -> ParticleBuffer> {
+                pub(super) fn into_closure(self) -> Box<dyn for<'a> Fn(&'a SolidTerm<'a>) -> SolidParticleBuffer> {
                     let shader = RefCell::new(self);
                     Box::new(
-                        move |r, mut p| {
+                        move |(r, p)| {
                             let mut shdr = shader.borrow_mut();
-                            *shdr.r1 = r;
-                            shdr.compute(units(p.len() as GLuint), 1, 1, &mut p);
-                            return p;
+                            *shdr.r1 = *r;
+
+                            #[allow(mutable_transmutes)]
+                            unsafe {
+                                let mut dest = Buffer::<[_],_>::uninitialized(&p.gl_provider(), p.len());
+                                let p_mut = transmute::<&SolidParticleBuffer, &mut SolidParticleBuffer>(p);
+                                shdr.compute(units(p.len() as GLuint), 1, 1, p_mut, &mut dest);
+                                dest
+                            }
                         }
                     )
                 }
@@ -217,18 +225,17 @@ glsl!{$
             #version 460
             layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
 
-            extern struct Particle;
+            extern struct SolidParticle;
 
             uniform float r1 = 1.0;
-            layout(std430) buffer part_ {restrict Particle part[];};
+            layout(std430) buffer part_ {readonly restrict SolidParticle part[];};
+            layout(std430) buffer dest_ {writeonly restrict SolidParticle dest[];};
 
             void main() {
                 uint id = gl_GlobalInvocationID.x;
-                part[id].den = 0.0;
-                // part[id].ref_pos = vec4(0.0,0.0,0.0,0.0);
-                part[id].pos = r1*part[id].vel;
-                part[id].vel = vec4(0.0,0.0,0.0,0.0);
-                // part[id].stress = mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0));
+                dest[id].part_id = part[id].part_id;
+                dest[id].ref_pos = vec4(0.0,0.0,0.0,0.0);
+                dest[id].stress = mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0));
             }
     }
 
@@ -314,7 +321,7 @@ pub struct ArithShaders {
     lc: Rc<[LCClosure]>,
     slc: Rc<[SolidLCClosure]>,
     vel: Rc<dyn for<'a> Fn(&'a Term<'a>) -> ParticleBuffer>,
-    vel_mut: Rc<dyn Fn(GLfloat, ParticleBuffer) -> ParticleBuffer>,
+    vel_solid: Rc<dyn for<'a> Fn(&'a SolidTerm<'a>) -> SolidParticleBuffer>,
     dot: Rc<dot::Program>,
 }
 
@@ -341,7 +348,7 @@ impl ArithShaders {
                 ]
             ),
             vel: vel::init(gl)?.into_closure().into(),
-            vel_mut: vel_mut::init(gl)?.into_closure().into(),
+            vel_solid: vel_solid::init(gl)?.into_closure().into(),
             dot: Rc::new(dot::init(gl)?)
         })
     }
@@ -421,7 +428,7 @@ impl ArithShaders {
     pub fn velocity<'a>(&self, term: (GLfloat, &'a Particles)) -> Particles {
         Particles {
             buf: (self.vel)(&(term.0, term.1.particles())),
-            solids: term.1.solids.clone(),
+            solids: (self.vel_solid)(&(term.0, term.1.solids())),
             boundary: term.1.boundary.clone(),
             materials: term.1.materials.clone(),
             time_id: term.1.time_id
@@ -474,8 +481,8 @@ impl Particles {
             if materials[p.mat as usize].normal_stiffness!=0.0 || materials[p.mat as usize].shear_stiffness!=0.0 {
                 p.solid_id = (result.len()+offset) as GLuint;
                 result.push(SolidParticle::new((i+p_offset)as GLuint,p.pos));
-                i += 1;
             }
+            i += 1;
         }
 
         if result.len() == 0 { result.push(SolidParticle::new(!0,[0.0,0.0,0.0,0.0].into())) }

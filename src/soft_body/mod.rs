@@ -231,6 +231,7 @@ glsl!{$
             #define I (mat4(vec4(1,0,0,0),vec4(0,1,0,0),vec4(0,0,1,0),vec4(0,0,0,1)))
             #define ZERO (mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0)))
             #define EPSILON 0.1
+            #define INVALID_INDEX 0xFFFFFFFF
 
             layout(local_size_x = 9, local_size_y = 3, local_size_z = 3) in;
 
@@ -449,7 +450,7 @@ glsl!{$
                 //save these properties for convenience
                 float m1 = materials[mat_id].mass;
                 float d1 = particles[p_id].den;
-                bool elastic = s_id!=0xFFFFFFFF && (materials[mat_id].normal_stiffness!=0 || materials[mat_id].shear_stiffness!=0);
+                bool elastic = s_id!=INVALID_INDEX && (materials[mat_id].normal_stiffness!=0 || materials[mat_id].shear_stiffness!=0);
 
                 //local variables for storing the result
                 float den = 0;
@@ -569,7 +570,7 @@ glsl!{$
                         }
 
                         vec4 contact_force = vec4(0,0,0,0);
-                        bool elastic2 = materials[mat_2].normal_stiffness!=0 || materials[mat_2].shear_stiffness!=0;
+                        bool elastic2 = s_id2!=INVALID_INDEX && (materials[mat_2].normal_stiffness!=0 || materials[mat_2].shear_stiffness!=0);
 
                         //hourglass restoring force and contact forces
                         if(elastic || elastic2) {
@@ -578,7 +579,7 @@ glsl!{$
                             float contact = h;
                             float r_cut = 2*contact;
 
-                            bool in_contact = dot(dX,dX)>(r_cut*r_cut) && dot(dx,dx)<r_cut*r_cut;
+                            bool in_contact = (!elastic || !elastic2 || dot(dX,dX)>(r_cut*r_cut)) && dot(dx,dx)<r_cut*r_cut;
 
                             if(mat_id == mat_2 || in_contact) {
                                 float l = length(dx);
@@ -649,15 +650,17 @@ glsl!{$
                         shared_den[gid] += shared_den[gid+shadow] + shared_den[gid+shadow*2];
                         shared_force[gid] += shared_force[gid+shadow] + shared_force[gid+shadow*2];
                     }
-                    memoryBarrierShared();
+                    barrier();
                 }
 
                 if(gid==0) {
 
                     forces[p_id].mat = mat_id;
+                    forces[p_id].solid_id = s_id;
                     forces[p_id].den = 0;
                     forces[p_id].vel = vec4(0,0,0,0);
                     forces[p_id].pos = particles[p_id].vel;
+                    stresses[s_id].part_id = p_id;
                     stresses[s_id].ref_pos = vec4(0,0,0,0);
                     stresses[s_id].stress = ZERO;
 
@@ -848,7 +851,7 @@ glsl!{$
                         if(gid<shadow) {
                             correction[gid] += correction[gid+shadow] + correction[gid+shadow*2];
                         }
-                        memoryBarrierShared();
+                        barrier();
                     }
 
                     //invert the correction matrix
@@ -889,7 +892,7 @@ glsl!{$
                             deformation[gid] += deformation[gid+shadow] + deformation[gid+shadow*2];
                             def_rate[gid] += def_rate[gid+shadow] + def_rate[gid+shadow*2];
                         }
-                        memoryBarrierShared();
+                        barrier();
                     }
 
                     if(gid==0) {

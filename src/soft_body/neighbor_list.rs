@@ -76,6 +76,11 @@ glsl! {$
                 if(id > particles.length()) return;
                 uint s_id = particles[id].solid_id;
 
+                if (mode == REFERENCE && s_id==INVALID_INDEX) {
+                    indices[id].ref_index = INVALID_INDEX;
+                    return;
+                }
+
                 vec4 pos = mode==REFERENCE ? solids[s_id].ref_pos : particles[id].pos;
 
                 if((any(isnan(pos)) || any(isinf(pos)))) {

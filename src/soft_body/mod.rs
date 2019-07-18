@@ -72,7 +72,7 @@ glsl!{$
 
             layout(std430) buffer particle_list { readonly restrict Particle particles[]; };
             layout(std430) buffer boundary_list { readonly restrict Particle boundary[]; };
-            layout(std430) buffer derivatives { restrict Particle forces[]; };
+            layout(std430) buffer derivatives { writeonly restrict Particle forces[]; };
 
             layout(std430) buffer material_list { readonly restrict Material materials[]; };
 
@@ -220,22 +220,17 @@ glsl!{$
                 }
 
                 if(gid==0) {
+                    //add up each local unit's contributions
+                    for(uint i=1; i<shadow; i++) {
+                        shared_den[0] += shared_den[i];
+                        shared_force[0] += shared_force[i];
+                    }
 
                     forces[p_id].mat = mat_id;
                     forces[p_id].solid_id = s_id;
-                    forces[p_id].den = 0;
-                    forces[p_id].vel = vec4(0,0,0,0);
+                    forces[p_id].den = shared_den[0];
+                    forces[p_id].vel = shared_force[0]/particles[p_id].den + vec4(0,-g,0,0);
                     forces[p_id].pos = particles[p_id].vel;
-
-                    //add up each local unit's contributions
-                    for(uint i=0; i<shadow; i++) {
-                        forces[p_id].den += shared_den[i];
-                        forces[p_id].vel += shared_force[i];
-                    }
-
-                    //get acceleration from force and gravity
-                    forces[p_id].vel /= particles[p_id].den;
-                    forces[p_id].vel += vec4(0,-g,0,0);
 
                 }
 
@@ -420,9 +415,9 @@ glsl!{$
             layout(std430) buffer particle_list { readonly restrict Particle particles[]; };
             layout(std430) buffer sold_particle_list { readonly restrict SolidParticle solids[]; };
             layout(std430) buffer boundary_list { readonly restrict Particle boundary[]; };
-            layout(std430) buffer derivatives { restrict Particle forces[]; };
-            layout(std430) buffer solid_derivatives { restrict SolidParticle stresses[]; };
-            layout(std430) buffer solid_derivatives2 { restrict SolidParticle stresses2[]; };
+            layout(std430) buffer derivatives { writeonly restrict Particle forces[]; };
+            layout(std430) buffer solid_derivatives { writeonly restrict SolidParticle stresses[]; };
+            layout(std430) buffer solid_derivatives2 { writeonly restrict SolidParticle stresses2[]; };
 
             layout(std430) buffer material_list { readonly restrict Material materials[]; };
             layout(std430) buffer strain_list { readonly restrict mat4 strains[][3]; };
@@ -629,23 +624,25 @@ glsl!{$
 
                 if(gid==0) {
 
+                    //add up each local unit's contributions
+                    for(uint i=1; i<shadow; i++) {
+                        shared_den[0] += shared_den[i];
+                        shared_force[0] += shared_force[i];
+                    }
+
                     forces[p_id].mat = mat_id;
                     forces[p_id].solid_id = s_id;
-                    forces[p_id].den = 0;
-                    forces[p_id].vel = vec4(0,0,0,0);
+
+                    forces[p_id].den = shared_den[0];
+                    forces[p_id].vel = shared_force[0]/particles[p_id].den + vec4(0,-g,0,0);
                     forces[p_id].pos = particles[p_id].vel;
+
                     stresses[s_id].part_id = p_id;
                     stresses[s_id].ref_pos = vec4(0,0,0,0);
                     stresses[s_id].stress = ZERO;
                     stresses2[s_id].part_id = p_id;
                     stresses2[s_id].ref_pos = vec4(0,0,0,0);
                     stresses2[s_id].stress = ZERO;
-
-                    //add up each local unit's contributions
-                    for(uint i=0; i<shadow; i++) {
-                        forces[p_id].den += shared_den[i];
-                        forces[p_id].vel += shared_force[i];
-                    }
 
                     //get the strain-rate
                     if(elastic) {
@@ -672,11 +669,6 @@ glsl!{$
                         }
 
                     }
-
-                    //get acceleration from force and gravity
-                    forces[p_id].vel /= particles[p_id].den;
-                    forces[p_id].vel += vec4(0,-g,0,0);
-
 
                 }
 

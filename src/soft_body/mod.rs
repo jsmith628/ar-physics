@@ -169,6 +169,7 @@ glsl!{$
                             den += m2 * dot(v, grad_w(r, h, norm_const));
                         }
 
+                        vec4 contact_force = vec4(0,0,0,0);
                         bool elastic2 = s_id2!=INVALID_INDEX && (materials[mat_2].normal_stiffness!=0 || materials[mat_2].shear_stiffness!=0);
 
                         //pressure force
@@ -178,19 +179,19 @@ glsl!{$
                                 p2/(d2*d2)
                             ) * grad_w(r, h, norm_const);
                             force += pressure_force;
-                            // if(mat_id != mat_2) contact_force += pressure_force;
+                            if(mat_id != mat_2) contact_force += pressure_force;
                         }
 
                         //viscocity
                         if(!elastic) force += m1*m2*(f1+f2)*dot(r,grad_w(r, h, norm_const))*v/(d1*d2*(dot(r,r)+EPSILON*h*h));
 
                         //friction
-                        // if((elastic || elastic2 || j<bc) && mat_id != mat_2) {
-                        //     vec4 r_inv = r / dot(r,r);
-                        //     vec4 normal_force = r_inv * dot(contact_force, r);
-                        //     vec4 tangent_vel = v - r_inv* dot(v, r);
-                        //     force += (f1 + f2) * length(normal_force) * normalize(tangent_vel);
-                        // }
+                        if((elastic || elastic2 || j<bc) && mat_id != mat_2) {
+                            vec4 r_inv = r / dot(r,r);
+                            vec4 normal_force = r_inv * dot(contact_force, r);
+                            vec4 tangent_vel = v - r_inv* dot(v, r);
+                            force += (f1 + f2) * length(normal_force) * normalize(tangent_vel);
+                        }
 
                         //artificial viscocity
                         if(j>=bc) force -= m1*m2*(
@@ -421,6 +422,7 @@ glsl!{$
             layout(std430) buffer boundary_list { readonly restrict Particle boundary[]; };
             layout(std430) buffer derivatives { restrict Particle forces[]; };
             layout(std430) buffer solid_derivatives { restrict SolidParticle stresses[]; };
+            layout(std430) buffer solid_derivatives2 { restrict SolidParticle stresses2[]; };
 
             layout(std430) buffer material_list { readonly restrict Material materials[]; };
             layout(std430) buffer strain_list { readonly restrict mat4 strains[][3]; };
@@ -527,8 +529,6 @@ glsl!{$
                 //fluid forces
                 if(in_bounds(b_pos, subdivisions)) {
 
-                    //save these properties for convenience
-                    uint state_eq = materials[mat_id].state_eq;
                     float f1 = materials[mat_id].visc;
 
                     //get this neighbor's bucking index and list and boundary count
@@ -545,7 +545,6 @@ glsl!{$
                         uint s_id2 = particles[p_id2].solid_id;
                         uint mat_2 = j<bc ? boundary[p_id2].mat : particles[p_id2].mat;
 
-                        uint state_eq2 = materials[mat_2].state_eq;
                         float m2 = materials[mat_2].mass;
                         float f2 = materials[mat_2].visc;
 
@@ -560,11 +559,6 @@ glsl!{$
                             r = particles[p_id2].pos - particles[p_id].pos;
                             v = particles[p_id2].vel - particles[p_id].vel;
                             d2 = particles[p_id2].den;
-                        }
-
-                        //density update
-                        if(!elastic || mat_id==mat_2) {
-                            den += m2 * dot(v, grad_w(r, h, norm_const));
                         }
 
                         vec4 contact_force = vec4(0,0,0,0);
@@ -643,6 +637,9 @@ glsl!{$
                     stresses[s_id].part_id = p_id;
                     stresses[s_id].ref_pos = vec4(0,0,0,0);
                     stresses[s_id].stress = ZERO;
+                    stresses2[s_id].part_id = p_id;
+                    stresses2[s_id].ref_pos = vec4(0,0,0,0);
+                    stresses2[s_id].stress = ZERO;
 
                     //add up each local unit's contributions
                     for(uint i=0; i<shadow; i++) {
@@ -1389,15 +1386,13 @@ glsl!{$
     ) -> ParticleState {
 
         #[allow(mutable_transmutes)]
-        particles.map(
+        particles.map_terms(
             |p| unsafe {
                 let prof = crate::PROFILER.as_mut().unwrap();
                 prof.new_segment("Bucketting".to_owned());
 
                 let (indices, buckets) = buckets.update_contents(&p);
 
-
-                let mut dest = p.mirror();
                 let particles = p.particles();
                 let solids = p.solids();
                 let materials = p.materials();
@@ -1412,30 +1407,36 @@ glsl!{$
 
                 prof.new_segment("Forces".to_owned());
 
-                let mut strains = Buffer::<[[mat4;3]],Read>::uninitialized(&particles.gl_provider(), solids.len());
-                if strains.len() > 1 {
-                    strain.compute(strains.len() as u32, 1, 1, ub, ub_s, ub_mat, indices, &mut strains, buckets);
-                    let (mut dest_p, mut dest_s) = dest.all_particles_mut();
+                let mut dest = p.mirror();
+                fluid_force.compute(
+                    p.particles().len() as u32, 1, 1,
+                    ub, ub_bound, dest.particles_mut(),
+                    ub_mat, indices, buckets
+                );
 
-                    force.compute(
+                if solids.len() > 1 {
+                    let mut dest2 = p.mirror();
+                    let mut strains = Buffer::<[[mat4;3]],Read>::uninitialized(&particles.gl_provider(), solids.len());
+
+                    strain.compute(strains.len() as u32, 1, 1, ub, ub_s, ub_mat, indices, &mut strains, buckets);
+                    let (mut dest_p, mut dest_s) = dest2.all_particles_mut();
+
+                    solid_force.compute(
                         p.particles().len() as u32, 1, 1,
-                        ub, ub_s, ub_bound, dest_p, dest_s,
+                        ub, ub_s, ub_bound, dest_p, dest_s, dest.solids_mut(),
                         ub_mat, &mut strains,
                         indices, buckets
                     );
+
+
+
+                    prof.end_segment();
+
+                    vec![dest, dest2]
                 } else {
-                    fluid_force.compute(
-                        p.particles().len() as u32, 1, 1,
-                        ub, ub_bound, dest.particles_mut(),
-                        ub_mat, indices, buckets
-                    );
+                    vec![dest]
                 }
 
-
-
-                prof.end_segment();
-
-                dest
             }
         )
     }

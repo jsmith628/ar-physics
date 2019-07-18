@@ -178,6 +178,23 @@ impl ParticleState {
         }
     }
 
+    pub fn map_terms<F:FnOnce(Particles)->Vec<Particles>>(mut self, f:F) -> Self {
+        self.reduce();
+        let arith = self.arith.take();
+        let particles = {
+            self.terms.into_inner().into_iter().next()
+                .map(|(mut t,_)| {Rc::make_mut(&mut t.0); Rc::try_unwrap(t.0).unwrap_or_else(|_| panic!())} )
+                .map(f)
+                .unwrap_or_else(|| Vec::with_capacity(0))
+        };
+        ParticleState {
+            terms: RefCell::new(
+                particles.into_iter().fold(Zero::zero(), |terms, p| terms + Term(Rc::new(p)).into())
+            ),
+            arith: arith
+        }
+    }
+
     pub fn map_into<R,F:FnOnce(Particles)->R>(self, f:F) -> Option<R> {self.map_into_or(None, |p| Some(f(p)))}
     pub fn map_into_or<R,F:FnOnce(Particles)->R>(self, def:R, f:F) -> R {self.map_into_or_else(|| def, f)}
     pub fn map_into_or_else<R,F:FnOnce(Particles)->R,G:FnOnce()->R>(self, def:G, f:F) -> R {

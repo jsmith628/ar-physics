@@ -2,7 +2,7 @@
 name = "Liquid-Solid test"
 kernel_radius = 0.012
 gravity = 3.1
-time_step = 0.01
+time_step = 0.001
 subticks = 11
 artificial_viscocity = 200.0
 integrator = "RK4"

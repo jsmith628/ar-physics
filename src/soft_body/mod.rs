@@ -165,9 +165,9 @@ glsl!{$
                         float p2 = pressure(state_eq2, d2, 0, c2, materials[mat_2].target_den);
 
                         //density update
-                        if(!elastic || mat_id==mat_2) {
+                        // if(!elastic || mat_id==mat_2) {
                             den += m2 * dot(v, grad_w(r, h, norm_const));
-                        }
+                        // }
 
                         vec4 contact_force = vec4(0,0,0,0);
                         bool elastic2 = s_id2!=INVALID_INDEX && (materials[mat_2].normal_stiffness!=0 || materials[mat_2].shear_stiffness!=0);
@@ -179,7 +179,7 @@ glsl!{$
                                 p2/(d2*d2)
                             ) * grad_w(r, h, norm_const);
                             force += pressure_force;
-                            if(mat_id != mat_2) contact_force += pressure_force;
+                            if(mat_id != mat_2 && (elastic || elastic2 || j<bc)) contact_force += pressure_force;
                         }
 
                         //viscocity
@@ -190,7 +190,9 @@ glsl!{$
                             vec4 r_inv = r / dot(r,r);
                             vec4 normal_force = r_inv * dot(contact_force, r);
                             vec4 tangent_vel = v - r_inv* dot(v, r);
-                            force += (f1 + f2) * length(normal_force) * normalize(tangent_vel);
+                            tangent_vel = normalize(tangent_vel);
+                            if(!all(isnan(tangent_vel)) && all(!isinf(tangent_vel)))
+                                force += (f1 + f2) * length(normal_force) * normalize(tangent_vel);
                         }
 
                         //artificial viscocity
@@ -444,8 +446,8 @@ glsl!{$
             void main() {
 
                 //get ids
-                uint s_id = gl_WorkGroupID.x;
-                uint p_id = solids[s_id].part_id;
+                uint p_id = gl_WorkGroupID.x;
+                uint s_id = particles[p_id].solid_id;
                 uint gid = gl_LocalInvocationIndex;
                 uint mat_id = particles[p_id].mat;
 
@@ -453,6 +455,17 @@ glsl!{$
                 float m1 = materials[mat_id].mass;
                 float d1 = particles[p_id].den;
                 bool elastic = s_id!=INVALID_INDEX && (materials[mat_id].normal_stiffness!=0 || materials[mat_id].shear_stiffness!=0);
+
+                if(!elastic) {
+                    if(gid==0) {
+                        forces[p_id].mat = mat_id;
+                        forces[p_id].solid_id = s_id;
+                        forces[p_id].den = 0;
+                        forces[p_id].pos = vec4(0,0,0,0);
+                        forces[p_id].vel = vec4(0,0,0,0);
+                    }
+                    return;
+                }
 
                 //local variables for storing the result
                 float den = 0;
@@ -1414,13 +1427,11 @@ glsl!{$
                     let (mut dest_p, mut dest_s) = dest2.all_particles_mut();
 
                     solid_force.compute(
-                        p.particles().len() as u32, 1, 1,
+                        particles.len() as u32, 1, 1,
                         ub, ub_s, ub_bound, dest_p, dest_s, dest.solids_mut(),
                         ub_mat, &mut strains,
                         indices, buckets
                     );
-
-
 
                     prof.end_segment();
 

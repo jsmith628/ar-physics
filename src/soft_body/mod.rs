@@ -165,10 +165,10 @@ glsl!{$
                         float p2 = pressure(state_eq2, d2, 0, c2, materials[mat_2].target_den);
 
                         //density update
-                        // if(j>=bc) {
-                        // if(!elastic || mat_id==mat_2) {
+                        if(j>=bc) {
+                        // if(mat_id==mat_2) {
                             den += m2 * dot(v, grad_w(r, h, norm_const));
-                        // }
+                        }
 
                         vec4 contact_force = vec4(0,0,0,0);
                         bool elastic2 = s_id2!=INVALID_INDEX && (materials[mat_2].normal_stiffness!=0 || materials[mat_2].shear_stiffness!=0);
@@ -184,7 +184,7 @@ glsl!{$
                         }
 
                         //viscocity
-                        if(!elastic) force += m1*m2*(f1+f2)*dot(r,grad_w(r, h, norm_const))*v/(d1*d2*(dot(r,r)+EPSILON*h*h));
+                        if(!elastic && j>=bc) force -= m1*m2*(f1+f2)*dot(r,grad_w(r, h, norm_const))*v/(d1*d2*(dot(r,r)+EPSILON*h*h));
 
                         //friction
                         if((elastic || elastic2 || j<bc) && mat_id != mat_2) {
@@ -192,8 +192,8 @@ glsl!{$
                             vec4 normal_force = r_inv * dot(contact_force, r);
                             vec4 tangent_vel = v - r_inv* dot(v, r);
                             tangent_vel = normalize(tangent_vel);
-                            if(!any(isnan(tangent_vel)) && !any(isinf(tangent_vel)))
-                                force += (f1 + f2) * length(normal_force) * normalize(tangent_vel);
+                            // if(!any(isnan(tangent_vel)) && !any(isinf(tangent_vel)))
+                                // force += (f1 + f2) * length(normal_force) * normalize(tangent_vel);
                         }
 
                         //artificial viscocity

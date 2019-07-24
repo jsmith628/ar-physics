@@ -14,11 +14,11 @@ dim = [2.0,2.0,2.0]
 
 [boundaries.border]
   friction = 0.0
-  color = [0.0,0.0,0.0,1.0]
+  color = [0.0,0.0,0.0,0.0]
   packing = 0.5
   difference = [
-    {min = [-0.15,-0.6,-0.15], dim = [0.3,1.0,0.3], border = 0.04},
-    {min = [-0.15,-0.5,-0.15], dim = [0.3,1.0,0.3]}
+    {min = [-0.17,-0.6,-0.17], dim = [0.34,1.0,0.34], border = 0.04},
+    {min = [-0.17,0.3,-0.17], dim = [0.34,1.0,0.34]}
   ]
 
 # [boundaries.border]
@@ -32,7 +32,7 @@ dim = [2.0,2.0,2.0]
   friction = 0.0
   color = [0.0,0.0,0.0,0.02]
   packing = 0.5
-  region = {center = [0.0,-0.4,-0.0], dim = [0.03,0.03,0.07]}
+  region = {center = [0.0,-0.3,-0.0], radii = [0.05,0.05,0.05]}
 
 [objects.f1]
   packing = 0.5
@@ -43,4 +43,4 @@ dim = [2.0,2.0,2.0]
   #color_low_density = [0.0,1.0,0.0,0.1]
   #color_high_density = [1.0,0.0,0.0,0.1]
 
-  region = {center = [-0.0,0.3, -0.0], dim = [0.08,0.2, 0.08]}
+  region = {center = [-0.0,0.3, -0.0], dim = [0.08,0.8, 0.08]}

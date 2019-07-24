@@ -3,7 +3,7 @@ name = "Flow over a cylinder in 2D"
 kernel_radius = 0.016
 gravity = 3.1
 time_step = 0.01
-subticks = 11
+subticks = 10
 artificial_viscocity = 20.0
 integrator = "RK4"
 

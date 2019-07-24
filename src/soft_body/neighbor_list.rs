@@ -73,7 +73,7 @@ glsl! {$
 
             void main() {
                 uint id = gl_GlobalInvocationID.x;
-                if(id > particles.length()) return;
+                if(id >= particles.length()) return;
                 uint s_id = particles[id].solid_id;
 
                 if (mode == REFERENCE && s_id==INVALID_INDEX) {
@@ -83,7 +83,7 @@ glsl! {$
 
                 vec4 pos = mode==REFERENCE ? solids[s_id].ref_pos : particles[id].pos;
 
-                if((any(isnan(pos)) || any(isinf(pos)))) {
+                if(any(isnan(pos)) || any(isinf(pos))) {
                     if(mode==POSITION) {
                         indices[id].pos_index = INVALID_INDEX;
                     } else if(mode==REFERENCE) {
@@ -134,7 +134,7 @@ glsl! {$
 
             void main() {
                 uint id = gl_GlobalInvocationID.x;
-                if(id > buckets.length()) return;
+                if(id >= buckets.length()) return;
                 uint count = buckets[id].count.length();
                 for(uint i=mode; i<count; i++) {
                     buckets[id].count[i] = 0;

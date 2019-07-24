@@ -165,6 +165,7 @@ glsl!{$
                         float p2 = pressure(state_eq2, d2, 0, c2, materials[mat_2].target_den);
 
                         //density update
+                        // if(j>=bc) {
                         // if(!elastic || mat_id==mat_2) {
                             den += m2 * dot(v, grad_w(r, h, norm_const));
                         // }
@@ -191,7 +192,7 @@ glsl!{$
                             vec4 normal_force = r_inv * dot(contact_force, r);
                             vec4 tangent_vel = v - r_inv* dot(v, r);
                             tangent_vel = normalize(tangent_vel);
-                            if(!all(isnan(tangent_vel)) && all(!isinf(tangent_vel)))
+                            if(!any(isnan(tangent_vel)) && !any(isinf(tangent_vel)))
                                 force += (f1 + f2) * length(normal_force) * normalize(tangent_vel);
                         }
 
@@ -1413,11 +1414,35 @@ glsl!{$
                 prof.new_segment("Forces".to_owned());
 
                 let mut dest = p.mirror();
+
+                // let mut is_nan = false;
+                // for part in p.particles().map().iter() {
+                //     for x in part.pos.value.iter() { if x.is_nan() { is_nan = true; } }
+                //     for x in part.vel.value.iter() { if x.is_nan() { is_nan = true; } }
+                //     if is_nan {break;}
+                // }
+
                 fluid_force.compute(
                     p.particles().len() as u32, 1, 1,
                     ub, ub_bound, dest.particles_mut(),
                     ub_mat, indices, buckets
                 );
+
+                // if !is_nan {
+                //     for part in dest.particles().map().iter() {
+                //         for x in part.pos.value.iter() { if x.is_nan() { is_nan = true; } }
+                //         for x in part.vel.value.iter() { if x.is_nan() { is_nan = true; } }
+                //         if is_nan {break;}
+                //     }
+                //
+                //     if is_nan {
+                //         println!("became NaN after fluid force!");
+                //     }
+                // }
+
+                // println!("{:?}", dest.particles().map().into_iter().map(|p|(p.den,p.vel[1])).collect::<Box<_>>());
+
+
 
                 if solids.len() > 1 {
                     let mut dest2 = p.mirror();

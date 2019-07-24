@@ -61,7 +61,7 @@ macro_rules! gen_lin_comb{
 
                     void main() {
                         uint id = gl_GlobalInvocationID.x;
-                        if(id > dst.length()) return;
+                        if(id >= dst.length()) return;
 
                         if(id < $p0.length()) {
                             dst[id].mat = $p0[id].mat;
@@ -94,7 +94,7 @@ macro_rules! gen_lin_comb{
                             Box::new(
                                 move |arr| {
                                     let (split, _) = arr.split_at(N);
-                                    let len = split.iter().fold(usize::min_value(), |l,p| l.max(p.1.len())) as GLuint;
+                                    let len = split.iter().fold(0, |l,p| l.max(p.1.len())) as GLuint;
                                     let gl = split[0].1.gl_provider();
                                     if let [$(($r, $p)),*] = split {
                                         unsafe {
@@ -130,7 +130,7 @@ macro_rules! gen_lin_comb{
 
                     void main() {
                         uint id = gl_GlobalInvocationID.x;
-                        if(id > dst.length()) return;
+                        if(id >= dst.length()) return;
 
                         if(id < $p0.length()) {
                             dst[id].part_id = $p0[id].part_id;
@@ -187,11 +187,13 @@ glsl!{$
 
             void main() {
                 uint id = gl_GlobalInvocationID.x;
-                dest[id].mat = part[id].mat;
-                dest[id].solid_id = part[id].solid_id;
-                dest[id].den = 0.0;
-                dest[id].pos = r1*part[id].vel;
-                dest[id].vel = vec4(0.0,0.0,0.0,0.0);
+                if(id < part.length() && id < dest.length()) {
+                    dest[id].mat = part[id].mat;
+                    dest[id].solid_id = part[id].solid_id;
+                    dest[id].den = 0.0;
+                    dest[id].pos = r1*part[id].vel;
+                    dest[id].vel = vec4(0.0,0.0,0.0,0.0);
+                }
             }
     }
 
@@ -233,9 +235,11 @@ glsl!{$
 
             void main() {
                 uint id = gl_GlobalInvocationID.x;
-                dest[id].part_id = part[id].part_id;
-                dest[id].ref_pos = vec4(0.0,0.0,0.0,0.0);
-                dest[id].stress = mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0));
+                if(id < part.length() && id < dest.length()) {
+                    dest[id].part_id = part[id].part_id;
+                    dest[id].ref_pos = vec4(0.0,0.0,0.0,0.0);
+                    dest[id].stress = mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0));
+                }
             }
     }
 

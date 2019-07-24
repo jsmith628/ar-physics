@@ -11,9 +11,10 @@ min = [-0.4,-1.0]
 dim = [1.6,1.1]
 
 [objects.f1]
-  speed_of_sound = 7000.0
+  speed_of_sound = 9000.0
   packing = 0.5
   viscocity = 4.0
+  density = 1.0
   color = [0.0,0.0,1.0,1.0]
   color_low_density = [0.0,1.0,0.0,1.0]
   color_high_density = [1.0,0.0,0.0,1.0]
@@ -23,8 +24,9 @@ dim = [1.6,1.1]
 [objects.on_click]
   on_click = "Relative"
   packing = 0.5
-  speed_of_sound = 7000.0
+  speed_of_sound = 9000.0
   viscocity = 4.0
+  density = 1.0
   color = [0.0,0.0,1.0,1.0]
   color_low_density = [0.0,1.0,0.0,1.0]
   color_high_density = [1.0,0.0,0.0,1.0]

@@ -180,6 +180,7 @@ glsl!{$
                                 p2/(d2*d2)
                             ) * grad_w(r, h, norm_const);
                             force += pressure_force;
+                            // force -= 0.004*grad_w(r, h, norm_const);
                             if(mat_id != mat_2 && (elastic || elastic2 || j<bc)) contact_force += pressure_force;
                         }
 

@@ -2,7 +2,7 @@ name = "Rope"
 kernel_radius = 0.015
 gravity = 5.0
 time_step = 0.001
-subticks = 15
+subticks = 11
 artificial_viscocity = 0.0
 integrator = "RK4"
 

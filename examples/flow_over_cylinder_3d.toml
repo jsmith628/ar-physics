@@ -5,28 +5,34 @@ particle_render_factor = 0.6
 lighting = true
 gravity = 2.1
 time_step = 0.01
-subticks = 9
+subticks = 2
 artificial_viscocity = 500.0
-integrator = "rk4"
+integrator = "RK4"
 
 min = [-1.0,-1.0,-1.0]
 dim = [2.0,2.0,2.0]
 
 [boundaries.border]
   friction = 0.0
-  color = [0.0,0.0,0.0,0.01]
+  color = [0.0,0.0,0.0,1.0]
   packing = 0.5
   difference = [
     {min = [-0.15,-0.6,-0.15], dim = [0.3,1.0,0.3], border = 0.04},
     {min = [-0.15,-0.5,-0.15], dim = [0.3,1.0,0.3]}
   ]
 
+# [boundaries.border]
+#   friction = 0.0
+#   color = [0.0,0.0,0.0,1.0]
+#   packing = 0.5
+#   region = {min = [-0.15,-0.6,-0.15], dim = [0.3,0.1,0.3]}
+
 
 [boundaries.border2]
   friction = 0.0
   color = [0.0,0.0,0.0,0.02]
   packing = 0.5
-  region = {center = [0.0,-0.4,-0.0], radii = [0.03,0.03,0.07]}
+  region = {center = [0.0,-0.4,-0.0], dim = [0.03,0.03,0.07]}
 
 [objects.f1]
   packing = 0.5
@@ -37,4 +43,4 @@ dim = [2.0,2.0,2.0]
   #color_low_density = [0.0,1.0,0.0,0.1]
   #color_high_density = [1.0,0.0,0.0,0.1]
 
-  region = {min = [-0.04,-0.2, -0.04], dim = [0.08,0.2, 0.08]}
+  region = {center = [-0.0,0.3, -0.0], dim = [0.08,0.2, 0.08]}

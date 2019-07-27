@@ -4,6 +4,8 @@
 extern crate gl_struct;
 extern crate glfw;
 extern crate toml;
+extern crate stl_io;
+extern crate rayon;
 
 extern crate ar_physics;
 extern crate ar_engine;
@@ -12,9 +14,19 @@ extern crate numerical_integration;
 
 use std::rc::Rc;
 use std::cell::RefCell;
+
 use gl_struct::*;
 use gl_struct::glsl_type::{vec4, vec3};
+
+use rayon::prelude::*;
+
 use toml::Value;
+
+use stl_io::*;
+
+use std::io::*;
+use std::io::Read;
+use std::fs::File;
 
 use ar_physics::soft_body::*;
 use ar_physics::soft_body::material_region::*;
@@ -158,6 +170,78 @@ glsl!{$
 
 }
 
+pub struct Mesh {
+    mesh:IndexedMesh
+}
+
+impl Region for Mesh {
+    fn bound(&self) -> AABB {
+        let mut min = [self.mesh.vertices[0][0], self.mesh.vertices[0][1], self.mesh.vertices[0][2],0.0];
+        let mut max = min;
+
+        for v in self.mesh.vertices.iter() {
+            for i in 0..3 {
+                min[i] = v[i].min(min[i]);
+                max[i] = v[i].max(max[i]);
+            }
+        }
+
+        let bound = AABB {min:min.into(), dim: [max[0]-min[0],max[1]-min[1],max[2]-min[2],max[3]-min[3]].into()};
+        println!("{:?}",bound);
+        bound
+    }
+
+    fn contains(&self, p: vec4) -> bool {
+        //if we have a 4D point, we're not in the mesh
+        if p.value[3] != 0.0 { return false; }
+
+        //because we don't actually have a good dot product operation
+        fn dot(v1:&[f32], v2: &[f32]) -> f32 { v1[0]*v2[0] + v1[1]*v2[1] }
+
+        self.mesh.faces.par_iter().map(
+            |f| [
+                self.mesh.vertices[f.vertices[0]],
+                self.mesh.vertices[f.vertices[1]],
+                self.mesh.vertices[f.vertices[2]]
+            ]
+        ).map(
+            |verts| {
+                let above = {
+                    verts[0][2] >= p.value[2] ||
+                    verts[1][2] >= p.value[2] ||
+                    verts[2][2] >= p.value[2]
+                };
+
+                if above {
+                    let (a,b,c) = (
+                        [verts[0][0],verts[0][1]],
+                        [verts[1][0],verts[1][1]],
+                        [verts[2][0],verts[2][1]]
+                    );
+
+                    let (s1,s2,d) = (
+                        [b[0]-a[0],b[1]-a[1]],
+                        [c[0]-a[0],c[1]-a[1]],
+                        [p.value[0]-a[0],p.value[1]-a[1]]
+                    );
+
+                    let s = (d[0]*s2[1] - d[1]*s2[0]) / (s1[0]*s2[1] - s1[1]*s2[0]);
+                    let t = (s1[0]*d[1] - s1[1]*d[0]) / (s1[0]*s2[1] - s1[1]*s2[0]);
+
+                    s>=0.0 && s<=1.0 && t>=0.0 && t<=1.0 && s+t<=1.0
+
+                } else {
+                    false
+                }
+            }
+        ).reduce(|| false, |b1,b2| b1^b2)
+
+    }
+}
+
+
+
+
 fn to_vec4(v: &Vec<Value>) -> vec4 {
     let mut p = vec4::default();
     for i in 0..4 { if i<v.len() {p[i] = v[i].as_float().unwrap() as f32;} }
@@ -238,9 +322,6 @@ fn main() {
 
         let config = {
 
-            use std::fs::File;
-            use std::io::*;
-
             let file = File::open(path).unwrap();
             let mut reader = BufReader::new(file);
             let mut dest = String::new();
@@ -298,48 +379,56 @@ fn main() {
                 #[allow(unused_assignments)]
                 fn parse_region(region: &Table) -> Reg {
 
-                    let mut boxed = true;
-                    let mut min = [0.0,0.0,0.0,0.0].into();
-                    let mut dim = [0.0,0.0,0.0,0.0].into();
-                    let border = region.get("border").map(|f| f.as_float().unwrap() as f32);
-
-                    if let Some(Value::Array(arr)) = region.get("dim") {
-                        boxed = true;
-                        dim = to_vec4(arr);
-                    } else if let Some(Value::Array(arr)) = region.get("radii") {
-                        boxed = false;
-                        dim = to_vec4(arr);
-                        for i in 0..4 { dim[i] *= 2.0; }
-                    } else if let Some(Value::Array(arr)) = region.get("diameters") {
-                        boxed = false;
-                        dim = to_vec4(arr);
+                    if let Some(Value::String(path)) = region.get("model") {
+                        Rc::new(
+                            Mesh{
+                                mesh:read_stl(&mut File::open(path).unwrap()).unwrap()
+                            }
+                        )
                     } else {
-                        //catch possible unions/intersections/differences
-                        return parse_region_from_mat(region);
-                    }
+                        let mut boxed = true;
+                        let mut min = [0.0,0.0,0.0,0.0].into();
+                        let mut dim = [0.0,0.0,0.0,0.0].into();
+                        let border = region.get("border").map(|f| f.as_float().unwrap() as f32);
 
-                    if let Some(Value::Array(arr)) = region.get("min") {
-                        min = to_vec4(arr);
-                    } else if let Some(Value::Array(arr)) = region.get("center") {
-                        min = to_vec4(arr);
-                        for i in 0..4 { min[i] -= 0.5*dim[i]; }
-                    }
+                        if let Some(Value::Array(arr)) = region.get("dim") {
+                            boxed = true;
+                            dim = to_vec4(arr);
+                        } else if let Some(Value::Array(arr)) = region.get("radii") {
+                            boxed = false;
+                            dim = to_vec4(arr);
+                            for i in 0..4 { dim[i] *= 2.0; }
+                        } else if let Some(Value::Array(arr)) = region.get("diameters") {
+                            boxed = false;
+                            dim = to_vec4(arr);
+                        } else {
+                            //catch possible unions/intersections/differences
+                            return parse_region_from_mat(region);
+                        }
 
-                    if boxed {
-                        if let Some(depth) = border {
-                            Rc::new(AABB {min: min, dim: dim}.border(depth))
-                        } else {
-                            Rc::new(AABB {min: min, dim: dim})
+                        if let Some(Value::Array(arr)) = region.get("min") {
+                            min = to_vec4(arr);
+                        } else if let Some(Value::Array(arr)) = region.get("center") {
+                            min = to_vec4(arr);
+                            for i in 0..4 { min[i] -= 0.5*dim[i]; }
                         }
-                    } else {
-                        for i in 0..4 {
-                            dim[i] *= 0.5;
-                            min[i] += dim[i];
-                        }
-                        if let Some(depth) = border {
-                            Rc::new(AABE {center: min, radii: dim}.border(depth))
+
+                        if boxed {
+                            if let Some(depth) = border {
+                                Rc::new(AABB {min: min, dim: dim}.border(depth))
+                            } else {
+                                Rc::new(AABB {min: min, dim: dim})
+                            }
                         } else {
-                            Rc::new(AABE {center: min, radii: dim})
+                            for i in 0..4 {
+                                dim[i] *= 0.5;
+                                min[i] += dim[i];
+                            }
+                            if let Some(depth) = border {
+                                Rc::new(AABE {center: min, radii: dim}.border(depth))
+                            } else {
+                                Rc::new(AABE {center: min, radii: dim})
+                            }
                         }
                     }
 

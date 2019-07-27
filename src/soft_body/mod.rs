@@ -194,7 +194,7 @@ glsl!{$
                             vec4 tangent_vel = v - r_inv* dot(v, r);
                             tangent_vel = normalize(tangent_vel);
                             // if(!any(isnan(tangent_vel)) && !any(isinf(tangent_vel)))
-                                // force += (f1 + f2) * length(normal_force) * normalize(tangent_vel);
+                            //     force += (f1 + f2) * length(normal_force) * normalize(tangent_vel);
                         }
 
                         //artificial viscocity

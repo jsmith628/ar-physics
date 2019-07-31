@@ -43,6 +43,12 @@ glsl!{$
 
             impl AABB {
 
+                pub fn from_min_max(min:vec4, max:vec4) -> Self {
+                    let mut dim = max;
+                    for i in 0..4 {dim.value[i] -= min.value[i];}
+                    AABB {min: min, dim: dim}
+                }
+
                 pub fn center(&self) -> vec4 {
                     [self.min[0]+0.5*self.dim[0],self.min[1]+0.5*self.dim[1],self.min[2]+0.5*self.dim[2],self.min[3]+0.5*self.dim[3]].into()
                 }
@@ -133,6 +139,110 @@ impl<R:Region+?Sized,Ptr: ::std::ops::Deref<Target=R> + 'static> Region for Ptr 
     fn bound(&self) -> AABB {self.deref().bound()}
     fn contains(&self, p: vec4) -> bool { self.deref().contains(p) }
 }
+
+
+#[derive(Clone,PartialEq)]
+pub struct Transformed<R:Region>(pub R, pub mat4, pub vec4);
+
+impl<R:Region> Transformed<R> {
+    pub fn from_translation(region:R, trans:vec4) -> Self {
+        Transformed(region, [[1.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0],[0.0,0.0,1.0,0.0],[0.0,0.0,0.0,1.0]].into(), trans)
+    }
+}
+
+impl<R:Region> Region for Transformed<R> {
+    fn bound(&self) -> AABB{
+        let mut bound = self.0.bound();
+        let mut min = self.2;
+        let mut max = self.2;
+        for i in 0..4 {
+            let mut a_min = 0.0;
+            for j in 0..4 {a_min += self.1.value[j][i]*bound.min.value[j];}
+
+            min.value[i] += a_min;
+            max.value[i] += a_min;
+
+            for j in 0..4 {min.value[i] += (self.1.value[j][i]*bound.dim.value[j]).min(0.0);}
+            for j in 0..4 {max.value[i] += (self.1.value[j][i]*bound.dim.value[j]).max(0.0);}
+
+        }
+        AABB::from_min_max(min, max)
+    }
+
+    fn contains(&self, p: vec4) -> bool {
+        let mut p_prime = p.value;
+        let mut a = self.1.value;
+
+        for i in 0..4 {p_prime[i] -= self.2.value[i];}
+
+        fn row_mul(a: &mut [[f32;4];4], v:&mut [f32;4], row:usize, col:usize, factor:f32) {
+            for k in col..4 {a[k][row] *= factor;}
+            v[row] *= factor;
+        }
+
+        fn row_sum(a: &mut [[f32;4];4], v:&mut [f32;4], row:usize, col:usize, factor:f32, dest:usize) {
+            for k in col..4 {
+                a[k][dest] += factor*a[k][row];
+            }
+            v[dest] += factor*v[row];
+        }
+
+        fn swap_rows(a: &mut [[f32;4];4], v:&mut [f32;4], row1:usize, row2:usize, col:usize) {
+            for k in col..4 {
+                a[k].swap(row1, row2);
+            }
+            v.swap(row1, row2);
+        }
+
+        //Guass-Jordon elimination
+        let mut i = 0;
+        let mut j = 0;
+        while i<4 && j<4 {
+
+            // println!("a={:?}, p={:?}", a, p_prime);
+
+            if a[j][i] != 0.0 {
+                let pivot = a[j][i];
+                if pivot != 1.0 { row_mul(&mut a, &mut p_prime, i, j, 1.0/pivot); }
+                for k in 0..4 {
+                    if k!=i && a[j][k] != 0.0 {
+                        let pivot2 = -a[j][k];
+                        // row_mul(&mut a, &mut p_prime, k, j, pivot);
+                        row_sum(&mut a, &mut p_prime, i, j, pivot2, k);
+                    }
+                }
+
+                i += 1;
+                j += 1;
+            } else {
+                let mut cont = false;
+                for k in (i+1)..4 {
+                    if a[j][k] != 0.0 {
+                        swap_rows(&mut a, &mut p_prime, i, k, j);
+                        cont = true;
+                    }
+                }
+                if !cont {j += 1;}
+            }
+        }
+
+        // let mut check = [0.0,0.0,0.0,0.0];
+        // for i in 0..4 {
+        //     for j in 0..4 {
+        //         check[i] += self.1.value[j][i]*p_prime[j];
+        //     }
+        //     check[i] += self.2.value[i];
+        // }
+        //
+        // println!("{:?}", a);
+        // println!("{:?}", self.1.value);
+        // println!("{:?}", p_prime);
+        // println!("{:?} {:?}", p.value, check);
+
+        self.0.contains(p_prime.into())
+    }
+}
+
 
 #[derive(Clone,PartialEq,Eq)]
 pub struct Difference<L:Region, R:Region>(pub L, pub R);

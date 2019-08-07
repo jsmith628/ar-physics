@@ -296,6 +296,7 @@ impl Div<GLfloat> for ParticleState { type Output=Self; #[inline] fn div(mut sel
 
 impl AddAssociative for ParticleState {}
 impl AddCommutative for ParticleState {}
+impl Distributive<GLfloat> for ParticleState {}
 
 impl InnerProductSpace<GLfloat> for ParticleState {
     fn inner_product(self, rhs: Self) -> GLfloat {

@@ -186,12 +186,11 @@ impl Region for Mesh {
             }
         }
 
-        let bound = AABB {min:min.into(), dim: [max[0]-min[0],max[1]-min[1],max[2]-min[2],max[3]-min[3]].into()};
-        println!("{:?}",bound);
-        bound
+        AABB::from_min_max(min.into(),max.into())
     }
 
     fn contains(&self, p: vec4) -> bool {
+
         //if we have a 4D point, we're not in the mesh
         if p.value[3] != 0.0 { return false; }
 
@@ -225,17 +224,18 @@ impl Region for Mesh {
                         [p.value[0]-a[0],p.value[1]-a[1]]
                     );
 
-                    let s = (d[0]*s2[1] - d[1]*s2[0]) / (s1[0]*s2[1] - s1[1]*s2[0]);
-                    let t = (s1[0]*d[1] - s1[1]*d[0]) / (s1[0]*s2[1] - s1[1]*s2[0]);
+                    let mut a = (s1[0]*s2[1] - s1[1]*s2[0]);
+                    let s = a.signum() * (d[0]*s2[1] - d[1]*s2[0]);
+                    let t = a.signum() * (s1[0]*d[1] - s1[1]*d[0]);
+                    a = a.abs();
 
-                    s>=0.0 && s<=1.0 && t>=0.0 && t<=1.0 && s+t<=1.0
+                    s>=0.0 && s<=a && t>=0.0 && t<=a && s+t<=a
 
                 } else {
                     false
                 }
             }
         ).reduce(|| false, |b1,b2| b1^b2)
-
     }
 }
 
@@ -472,7 +472,6 @@ fn main() {
                             [0.0,0.0,0.0,1.0]
                         ];
 
-                        println!("{:?}", mat);
 
                         for i in 0..4 {
                             for j in 0..4 {

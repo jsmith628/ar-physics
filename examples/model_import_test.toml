@@ -21,7 +21,13 @@ dim = [1.0,1.0,1.0]
   color = [0.0,0.0,1.0,1.0]
   # color_high_density = [1.0,0.0,0.0,0.1]
   # color_low_density = [0.0,1.0,0.0,0.1]
-  region = {translation = [0.0,0.1,0.0], rotation=[1.0,0.0,0.0,45.0], model = "examples/models/gear.stl"}
+  # region = {translation = [0.0,0.1,0.0], scale = [1.0,1.0,1.0], model = "examples/models/gear2.stl"}
+  region = {translation = [0.0,0.1,0.0], scale = [0.03,0.03,0.03], model = "examples/models/gear3.stl"}
+  # region = {translation = [0.0,0.1,0.0], scale = [0.04,0.04,0.04], model = "examples/models/non_hollow_stomach.stl"}
+
+# [objects.gear.region]
+#   scale = [0.025,0.025,0.025]
+#   union = [{translation = [1207.713, 7187.29, 1527.9222, 0.0], model = "examples/models/esophagus_stomach_duodenum.stl"}]
 
 
 [boundaries.floor]

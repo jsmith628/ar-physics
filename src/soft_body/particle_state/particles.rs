@@ -494,12 +494,18 @@ impl Particles {
         result.into_boxed_slice()
     }
 
-    pub fn new(gl: &GLProvider, materials: Box<[Material]>, mut particles: Box<[Particle]>, boundary: Box<[Particle]>) -> Self {
+
+
+    pub fn new(
+        gl: &GLProvider,
+        materials: (Box<[Material]>, Box<[MatInteraction]>),
+        mut particles: Box<[Particle]>, boundary: Box<[Particle]>
+    ) -> Self {
         Particles{
-            solids: Buffer::from_box(gl, Self::init_solid_particles(&mut particles, &materials, 0,0)),
+            solids: Buffer::from_box(gl, Self::init_solid_particles(&mut particles, &materials.0, 0,0)),
             buf: Buffer::from_box(gl, particles),
             boundary: Rc::new(Buffer::from_box(gl, boundary)),
-            materials: Rc::new(Buffer::from_box(gl, materials)),
+            materials: Rc::new((Buffer::from_box(gl, materials.0), Buffer::from_box(gl, materials.1))),
             time_id: 0
         }
     }
@@ -520,7 +526,8 @@ impl Particles {
     pub fn particles_mut(&mut self) -> &mut ParticleBuffer { &mut self.buf }
     pub fn solids(&self) -> &SolidParticleBuffer { &self.solids }
     pub fn solids_mut(&mut self) -> &mut SolidParticleBuffer { &mut self.solids }
-    pub fn materials(&self) -> &Materials { &self.materials }
+    pub fn materials(&self) -> &MaterialBuffer { &self.materials.0 }
+    pub fn interactions(&self) -> &InteractionBuffer { &self.materials.1 }
 
     pub fn all_particles_mut(&mut self) -> (&mut ParticleBuffer, &mut SolidParticleBuffer) {
         (&mut self.buf, &mut self.solids)
@@ -531,11 +538,11 @@ impl Particles {
 
         let mat_id = {
             if material.normal_stiffness!=0.0 || material.shear_stiffness!=0.0 {
-                self.materials.len()
+                self.materials().len()
             } else {
                 let mut i = 0;
-                let len = self.materials.len();
-                for mat in self.materials.map().iter() {
+                let len = self.materials().len();
+                for mat in self.materials().map().iter() {
                     if material == *mat {
                         break;
                     }
@@ -551,11 +558,12 @@ impl Particles {
         }
 
         //add the new material, if it needs to be added
-        if mat_id == self.materials.len() {
+        if mat_id == self.materials().len() {
+            //TODO: fix add to the interaction buffer as well
             unsafe {
                 let new_mat = add_to_buffer(self.materials(), Box::new([material]));
                 self.time_id += 1; //make this material list the new global one
-                self.materials = Rc::new(new_mat);
+                Rc::make_mut(&mut self.materials).0 = new_mat;
             }
         }
 

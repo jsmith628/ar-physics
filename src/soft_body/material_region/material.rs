@@ -43,10 +43,12 @@ pub struct PlasticParams {
     pub relaxation_time: f32
 }
 
+#[non_exhaustive]
 pub enum StateEquation {
     Zero = 0,
-    Tait = 1,
-    IdealGas = 2
+    Constant = 1,
+    IdealGas = 2,
+    Tait = 3
 }
 
 impl Material {
@@ -109,5 +111,3 @@ impl Material {
     }
 
 }
-
-pub type Materials = Buffer<[Material], ReadWrite>;

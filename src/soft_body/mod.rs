@@ -29,6 +29,13 @@ glsl!{$
         @Compute
             #version 460
 
+            #define EQ_ZERO 0
+            #define EQ_CONSTANT 1
+            #define EQ_IDEAL_GAS 2
+            #define EQ_TAIT 3
+            #define EQ_LENNARD_JONES 4
+            #define EQ_HERTZ 5
+
             #define I (mat4(vec4(1,0,0,0),vec4(0,1,0,0),vec4(0,0,1,0),vec4(0,0,0,1)))
             #define ZERO (mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0)))
             #define EPSILON 0.1
@@ -52,21 +59,27 @@ glsl!{$
             uniform int dim, mode;
             uniform float norm_const, h, g, f;
 
-            float state(float density, float temperature, float c, float d0){
-                return (c*c*d0/7)*(pow(density/d0,7)-1);
-            }
-
-            float ideal_gas(float density, float temperature, float c, float d0){
-                return c*c*(density - d0);
-            }
-
             float pressure(uint eq, float density, float temperature, float c, float d0) {
-                if(eq==0) {
-                    return 0;
-                } else if(eq==1) {
-                    return state(density, temperature, c, d0);
-                } else {
-                    return ideal_gas(density, temperature, c, d0);
+                switch(eq) {
+                    case EQ_CONSTANT: return c*c;
+                    case EQ_IDEAL_GAS: return c*c*(density - d0);
+                    case EQ_TAIT: return (c*c*d0/7)*(pow(density/d0,7)-1);
+                    default: return 0;
+                }
+            }
+
+            float contact_potential(uint eq, float r, float strength, float r0) {
+                switch(eq) {
+                    case EQ_CONSTANT: return strength;
+                    case EQ_IDEAL_GAS: return strength*(r - r0);
+                    case EQ_TAIT: return (strength*r0/7)*(pow(r/r0,7)-1);
+                    case EQ_LENNARD_JONES:
+                        float factor = r0/r;
+                        factor *= factor * factor;
+                        factor *= factor;
+                        return strength*(factor*factor - 2*factor);
+                    case EQ_HERTZ: return (strength*r0/7)*(pow(r/r0,7)-1);
+                    default: return 0;
                 }
             }
 
@@ -156,7 +169,7 @@ glsl!{$
                             v = boundary[p_id2].vel - particles[p_id].vel;
                             d2 = boundary[p_id2].den + d1;
                             c2 = 5000;
-                            state_eq2 = state_eq==0 ? 1 : state_eq;
+                            state_eq2 = state_eq==EQ_ZERO ? EQ_TAIT : state_eq;
                         } else {
                             r = particles[p_id2].pos - particles[p_id].pos;
                             v = particles[p_id2].vel - particles[p_id].vel;
@@ -890,7 +903,7 @@ glsl!{$
                 //NOTE: we know for CERTAIN that neither of these are modified by the shader,
                 //so against all warnings, we are going to transmute them to mutable
 
-                let ub_mat: &mut Materials = ::std::mem::transmute::<&Materials,&mut Materials>(materials);
+                let ub_mat: &mut MaterialBuffer = ::std::mem::transmute::<&MaterialBuffer,&mut MaterialBuffer>(materials);
                 let ub = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(&*particles);
                 let ub_s = ::std::mem::transmute::<&SolidParticleBuffer,&mut SolidParticleBuffer>(&*solids);
                 let ub_bound = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(p.boundary());
@@ -958,16 +971,18 @@ impl FluidSim {
     pub fn with_integrator<I: VelIntegrator+Sized+'static>(
         gl: &GLProvider,
         fluids: &[MaterialRegion],
+        interactions: &[&[Option<MatInteraction>]],
         bounds: AABB, kernel_rad: f32,
         integrator: I, timestep: f32, subticks: uint,
         gravity: f32, artificial_viscocity: f32,
     ) -> Result<Self, GLError> {
-        Self::new(gl, fluids, bounds, kernel_rad, Box::new(integrator), timestep, subticks, gravity, artificial_viscocity)
+        Self::new(gl, fluids, interactions, bounds, kernel_rad, Box::new(integrator), timestep, subticks, gravity, artificial_viscocity)
     }
 
     pub fn new(
         gl: &GLProvider,
         fluids: &[MaterialRegion],
+        interactions: &[&[Option<MatInteraction>]],
         bounds: AABB, kernel_rad: f32,
         integrator: Box<dyn VelIntegrates<f32, ParticleState>>,
         timestep: f32, subticks: uint,
@@ -999,6 +1014,23 @@ impl FluidSim {
         particles.shrink_to_fit();
         materials.shrink_to_fit();
 
+        let mut inter = vec![MatInteraction::default(); materials.len()*materials.len()].into_boxed_slice();
+        for i in 0..materials.len() {
+            for j in i..materials.len() {
+                let interaction = {
+                    if let Some(mi) = interactions[i][j] {
+                        mi
+                    } else if let Some(mi) = interactions[j][i] {
+                        mi
+                    } else {
+                        MatInteraction::default_between(materials[i], materials[j], kernel_rad)
+                    }
+                };
+                inter[i*materials.len() + j] = interaction;
+                inter[j*materials.len() + i] = interaction;
+            }
+        }
+
         let dim = {
             let mut d = 0;
             for i in 0..4 { if bounds.dim[i] > 0.0 {d += 1u32}; }
@@ -1013,7 +1045,7 @@ impl FluidSim {
             subticks: subticks,
 
             time: 0.0,
-            particles: Particles::new(gl, materials.into_boxed_slice(), particles.into_boxed_slice(), boundary.into_boxed_slice()),
+            particles: Particles::new(gl, (materials.into_boxed_slice(),inter), particles.into_boxed_slice(), boundary.into_boxed_slice()),
             state: Vec::new().into_boxed_slice(),
 
             neighbor_list: RefCell::new(NeighborList::new(gl, bounds, kernel_rad)),

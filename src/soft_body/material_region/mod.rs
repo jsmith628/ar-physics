@@ -4,9 +4,15 @@ use std::rc::Rc;
 
 pub use self::region::*;
 pub use self::material::*;
+pub use self::interaction::*;
 
 mod region;
 mod material;
+mod interaction;
+
+pub type MaterialBuffer = Buffer<[Material], ReadWrite>;
+pub type InteractionBuffer = Buffer<[MatInteraction], ReadWrite>;
+pub type Materials = (MaterialBuffer, InteractionBuffer);
 
 #[derive(Clone)]
 pub struct MaterialRegion {

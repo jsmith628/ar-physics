@@ -2,6 +2,7 @@
 #![feature(weak_ptr_eq)]
 #![feature(trivial_bounds)]
 #![feature(allocator_api)]
+#![feature(non_exhaustive)]
 
 
 #[macro_use] extern crate macro_program;

@@ -538,6 +538,7 @@ fn main() {
                         },
                         Some("Tait") | Some("tait") | Some("Liquid") | Some("liquid") => StateEquation::Tait,
                         Some("Ideal_Gas") | Some("ideal_gas") | Some("gas") | Some("Gas") => StateEquation::IdealGas,
+                        Some("Constant") | Some("constant") => StateEquation::Constant,
                         Some(s) => panic!("Invalid state equation: {}", s)
                     } as u32;
 
@@ -620,12 +621,15 @@ fn main() {
             }
         };
 
+        let int1 = vec![None;fluids.len()];
+        let interactions = vec![&int1[0..];fluids.len()];
+
         let mut engine = Engine::new();
         engine.add_component(
             "world",
             if tps < 0.0 {ConstantTimer::new_uncapped()} else {ConstantTimer::from_tps(tps)},
             FluidSim::new(&gl_provider,
-                &fluids[0..], AABB{min:min, dim:dim}, h, integrator, dt, subticks, g, alpha
+                &fluids[0..], &interactions[0..], AABB{min:min, dim:dim}, h, integrator, dt, subticks, g, alpha
             ).unwrap()
         );
 

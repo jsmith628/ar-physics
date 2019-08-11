@@ -868,7 +868,6 @@ glsl!{$
 
 
     pub fn compute_forces(
-        force: &mut compute_force::Program,
         fluid_force: &mut fluid_forces::Program,
         solid_force: &mut solid_forces::Program,
         strain: &mut compute_strain::Program,
@@ -900,34 +899,11 @@ glsl!{$
 
                 let mut dest = p.mirror();
 
-                // let mut is_nan = false;
-                // for part in p.particles().map().iter() {
-                //     for x in part.pos.value.iter() { if x.is_nan() { is_nan = true; } }
-                //     for x in part.vel.value.iter() { if x.is_nan() { is_nan = true; } }
-                //     if is_nan {break;}
-                // }
-
                 fluid_force.compute(
                     p.particles().len() as u32, 1, 1,
                     ub, ub_bound, dest.particles_mut(),
                     ub_mat, indices, buckets
                 );
-
-                // if !is_nan {
-                //     for part in dest.particles().map().iter() {
-                //         for x in part.pos.value.iter() { if x.is_nan() { is_nan = true; } }
-                //         for x in part.vel.value.iter() { if x.is_nan() { is_nan = true; } }
-                //         if is_nan {break;}
-                //     }
-                //
-                //     if is_nan {
-                //         println!("became NaN after fluid force!");
-                //     }
-                // }
-
-                // println!("{:?}", dest.particles().map().into_iter().map(|p|(p.den,p.vel[1])).collect::<Box<_>>());
-
-
 
                 if solids.len() > 1 {
                     let mut dest2 = p.mirror();
@@ -971,7 +947,6 @@ pub struct FluidSim {
     neighbor_list: RefCell<NeighborList>,
 
     //shaders
-    force: RefCell<compute_force::Program>,
     fluid_forces: RefCell<fluid_forces::Program>,
     solid_forces: RefCell<solid_forces::Program>,
     strain: RefCell<compute_strain::Program>
@@ -1043,23 +1018,15 @@ impl FluidSim {
 
             neighbor_list: RefCell::new(NeighborList::new(gl, bounds, kernel_rad)),
 
-            force: RefCell::new(compute_force::init(gl).unwrap()),
             fluid_forces: RefCell::new(fluid_forces::init(gl).unwrap()),
             solid_forces: RefCell::new(solid_forces::init(gl).unwrap()),
             strain: RefCell::new(compute_strain::init(gl).unwrap()),
         };
 
         use self::kernel::norm_const;
-        let mut force = fs.force.borrow_mut();
         let mut fluid_forces = fs.fluid_forces.borrow_mut();
         let mut solid_forces = fs.solid_forces.borrow_mut();
         let mut strain = fs.strain.borrow_mut();
-
-        *force.dim = dim as i32;
-        *force.norm_const = norm_const(dim, kernel_rad);
-        *force.h = kernel_rad;
-        *force.f = artificial_viscocity;
-        *force.g = gravity;
 
         *fluid_forces.dim = dim as i32;
         *fluid_forces.norm_const = norm_const(dim, kernel_rad);
@@ -1077,7 +1044,6 @@ impl FluidSim {
         *strain.h = kernel_rad;
         *strain.norm_const = norm_const(dim, kernel_rad);
 
-        drop(force);
         drop(fluid_forces);
         drop(solid_forces);
         drop(strain);
@@ -1085,7 +1051,7 @@ impl FluidSim {
         Ok(fs)
     }
 
-    pub fn kernel_radius(&self) -> f32 { *self.force.borrow().h }
+    pub fn kernel_radius(&self) -> f32 { *self.fluid_forces.borrow().h }
 
     pub fn time(&self) -> f32 {self.time}
 
@@ -1094,7 +1060,7 @@ impl FluidSim {
     }
 
     pub fn add_particles(&mut self, obj: MaterialRegion, offset: Option<vec4>) {
-        let (mut p, mat) = obj.gen_particles(*self.force.borrow().h, 0);
+        let (mut p, mat) = obj.gen_particles(*self.fluid_forces.borrow().h, 0);
 
         if let Some(t) = offset {
             for x in p.iter_mut() {
@@ -1117,7 +1083,6 @@ impl ::ar_engine::engine::Component for FluidSim {
     #[inline]
     fn init(&mut self) {
         let neighbors = &self.neighbor_list;
-        let forces = &self.force;
         let ff = &self.fluid_forces;
         let sf = &self.solid_forces;
         let strains = &self.strain;
@@ -1127,7 +1092,6 @@ impl ::ar_engine::engine::Component for FluidSim {
             self.timestep / self.subticks as f32,
             & |_t, state| state.velocity(),
             & |_t, state| compute_forces(
-                &mut forces.borrow_mut(),
                 &mut ff.borrow_mut(),
                 &mut sf.borrow_mut(),
                 &mut strains.borrow_mut(),
@@ -1149,7 +1113,6 @@ impl ::ar_engine::engine::Component for FluidSim {
             let neighbors = &self.neighbor_list;
             let ff = &self.fluid_forces;
             let sf = &self.solid_forces;
-            let forces = &self.force;
             let strains = &self.strain;
 
             state = Some(
@@ -1159,7 +1122,6 @@ impl ::ar_engine::engine::Component for FluidSim {
                     dt,
                     & |_t, state| state.velocity(),
                     & |_t, state| compute_forces(
-                        &mut forces.borrow_mut(),
                         &mut ff.borrow_mut(),
                         &mut sf.borrow_mut(),
                         &mut strains.borrow_mut(),

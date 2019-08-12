@@ -43,7 +43,9 @@ impl MatInteraction {
         if mat1.state_eq != StateEquation::Zero as GLuint && mat2.state_eq != StateEquation::Zero as GLuint {
             Self::default()
         } else {
-            MatInteraction::new(ContactPotental::Linear, 3000.0, h, 0.0, 0.0)
+            MatInteraction::new(ContactPotental::Linear, 1000.0, h, 0.0, 0.0)
+            // MatInteraction::new(ContactPotental::Tait, 0.05, 2.0*h, 0.0, 0.0)
+            // MatInteraction::new(ContactPotental::LennardJones, 0.01, h, 0.0, 0.0)
         }
     }
 

@@ -45,6 +45,7 @@ glsl!{$
 
             extern struct AABB;
             extern struct Material;
+            extern struct MatInteraction;
             extern struct Particle;
             extern struct Bucket;
             extern struct Index;
@@ -70,9 +71,9 @@ glsl!{$
 
             float contact_potential(uint eq, float r, float strength, float r0) {
                 switch(eq) {
-                    case EQ_CONSTANT: return strength;
-                    case EQ_IDEAL_GAS: return strength*(r - r0);
-                    case EQ_TAIT: return (strength*r0/7)*(pow(r/r0,7)-1);
+                    case EQ_CONSTANT: return r<=r0 ? strength : 0;
+                    case EQ_IDEAL_GAS: return strength*(r0-r);
+                    case EQ_TAIT: return (strength*r/7)*(pow(r0/r,7)-1);
                     case EQ_LENNARD_JONES:
                         float factor = r0/r;
                         factor *= factor * factor;
@@ -88,6 +89,7 @@ glsl!{$
             layout(std430) buffer derivatives { writeonly restrict Particle forces[]; };
 
             layout(std430) buffer material_list { readonly restrict Material materials[]; };
+            layout(std430) buffer interaction_list { readonly restrict MatInteraction interactions[]; };
 
             layout(std430) buffer index_list { readonly restrict Index indices[]; };
             layout(std430) buffer neighbor_list {
@@ -167,9 +169,10 @@ glsl!{$
                         if(j<bc) {
                             r = boundary[p_id2].pos - particles[p_id].pos;
                             v = boundary[p_id2].vel - particles[p_id].vel;
-                            d2 = boundary[p_id2].den + d1;
-                            c2 = 5000;
-                            state_eq2 = state_eq==EQ_ZERO ? EQ_TAIT : state_eq;
+                            d2 = boundary[p_id2].den;
+                            // d2 = boundary[p_id2].den + d1;
+                            // c2 = 5000;
+                            // state_eq2 = state_eq==EQ_ZERO ? EQ_TAIT : state_eq;
                         } else {
                             r = particles[p_id2].pos - particles[p_id].pos;
                             v = particles[p_id2].vel - particles[p_id].vel;
@@ -186,11 +189,15 @@ glsl!{$
                         vec4 contact_force = vec4(0,0,0,0);
                         bool elastic2 = s_id2!=INVALID_INDEX && (materials[mat_2].normal_stiffness!=0 || materials[mat_2].shear_stiffness!=0);
 
+                        MatInteraction inter = interactions[mat_id*materials.length() + mat_2];
+                        float contact_pressure = contact_potential(inter.potential, length(r), inter.radius, inter.strength);
+
                         //pressure force
                         if(!elastic || !elastic2) {
                             vec4 pressure_force = m1*m2*(
                                 p1/(d1*d1) +
-                                p2/(d2*d2)
+                                p2/(d2*d2) +
+                                contact_pressure/(d2*m1)
                             ) * grad_w(r, h, norm_const);
                             force += pressure_force;
                             // force -= 0.004*grad_w(r, h, norm_const);
@@ -899,11 +906,13 @@ glsl!{$
                 let particles = p.particles();
                 let solids = p.solids();
                 let materials = p.materials();
+                let interactions = p.interactions();
 
                 //NOTE: we know for CERTAIN that neither of these are modified by the shader,
                 //so against all warnings, we are going to transmute them to mutable
 
                 let ub_mat: &mut MaterialBuffer = ::std::mem::transmute::<&MaterialBuffer,&mut MaterialBuffer>(materials);
+                let ub_inter: &mut InteractionBuffer = ::std::mem::transmute::<&InteractionBuffer,&mut InteractionBuffer>(interactions);
                 let ub = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(&*particles);
                 let ub_s = ::std::mem::transmute::<&SolidParticleBuffer,&mut SolidParticleBuffer>(&*solids);
                 let ub_bound = ::std::mem::transmute::<&ParticleBuffer,&mut ParticleBuffer>(p.boundary());
@@ -915,7 +924,7 @@ glsl!{$
                 fluid_force.compute(
                     p.particles().len() as u32, 1, 1,
                     ub, ub_bound, dest.particles_mut(),
-                    ub_mat, indices, buckets
+                    ub_mat, ub_inter, indices, buckets
                 );
 
                 if solids.len() > 1 {
@@ -1026,6 +1035,7 @@ impl FluidSim {
                         MatInteraction::default_between(materials[i], materials[j], kernel_rad)
                     }
                 };
+                println!("{:?}", interaction);
                 inter[i*materials.len() + j] = interaction;
                 inter[j*materials.len() + i] = interaction;
             }

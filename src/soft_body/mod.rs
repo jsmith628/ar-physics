@@ -193,16 +193,14 @@ glsl!{$
                         float contact_pressure = contact_potential(inter.potential, length(r), inter.radius, inter.strength);
 
                         //pressure force
-                        if(!elastic || !elastic2) {
-                            vec4 pressure_force = m1*m2*(
-                                p1/(d1*d1) +
-                                p2/(d2*d2) +
-                                contact_pressure/(d2*m1)
-                            ) * grad_w(r, h, norm_const);
-                            force += pressure_force;
-                            // force -= 0.004*grad_w(r, h, norm_const);
-                            if(mat_id != mat_2 && (elastic || elastic2 || j<bc)) contact_force += pressure_force;
-                        }
+
+                        force += m1*m2*(
+                            p1/(d1*d1) +
+                            p2/(d2*d2)
+                        ) * grad_w(r, h, norm_const);
+
+                        contact_force += (m2*contact_pressure/d2) * grad_w(r, h, norm_const);
+                        force += contact_force;
 
                         //viscocity
                         if(!elastic && j>=bc) force -= m1*m2*(f1+f2)*dot(r,grad_w(r, h, norm_const))*v/(d1*d2*(dot(r,r)+EPSILON*h*h));
@@ -213,8 +211,8 @@ glsl!{$
                             vec4 normal_force = r_inv * dot(contact_force, r);
                             vec4 tangent_vel = v - r_inv* dot(v, r);
                             tangent_vel = normalize(tangent_vel);
-                            // if(!any(isnan(tangent_vel)) && !any(isinf(tangent_vel)))
-                            //     force += (f1 + f2) * length(normal_force) * normalize(tangent_vel);
+                            if(!any(isnan(tangent_vel)) && !any(isinf(tangent_vel)))
+                                force += (f1 + f2) * length(normal_force) * normalize(tangent_vel);
                         }
 
                         //artificial viscocity
@@ -618,7 +616,7 @@ glsl!{$
                                             dx/(l+EPSILON*h);
                                 }
 
-                                if(in_contact) {
+                                if(mat_id == mat_2  && in_contact) {
                                     float r_geom = contact*contact / r_cut;
                                     float dr = max(r_cut - l, 0);
                                     contact_force = -5000*sqrt(dr*r_geom) * r / l;
@@ -1031,8 +1029,10 @@ impl FluidSim {
                         mi
                     } else if let Some(mi) = interactions[j][i] {
                         mi
-                    } else {
+                    } else if i!=j {
                         MatInteraction::default_between(materials[i], materials[j], kernel_rad)
+                    } else {
+                        MatInteraction::default()
                     }
                 };
                 println!("{:?}", interaction);

@@ -22,7 +22,8 @@ dim = [1.0,1.0,1.0]
   # color_high_density = [1.0,0.0,0.0,0.1]
   # color_low_density = [0.0,1.0,0.0,0.1]
   # region = {translation = [0.0,0.1,0.0], scale = [1.0,1.0,1.0], model = "examples/models/gear2.stl"}
-  region = {translation = [0.0,0.1,0.0], scale = [0.03,0.03,0.03], model = "examples/models/gear3.stl"}
+  # region = {translation = [0.0,0.1,0.0], scale = [0.03,0.03,0.03], model = "examples/models/gear3.stl"}
+  region = {translation = [0.0,0.1,-0.2], scale = [0.2,0.2,0.2], model = "examples/models/shaft2_wheels4.STL"}
   # region = {translation = [0.0,0.1,0.0], scale = [0.04,0.04,0.04], model = "examples/models/non_hollow_stomach.stl"}
 
 # [objects.gear.region]

@@ -56,7 +56,7 @@ pub fn compute_forces(
                 let (mut dest_p, mut dest_s) = dest2.all_particles_mut();
 
                 solid_force.compute(
-                    particles.len() as u32, 1, 1,
+                    solids.len() as u32, 1, 1,
                     ub, ub_s, ub_bound, dest_p, dest_s, dest.solids_mut(),
                     ub_mat, &mut strains,
                     indices, buckets

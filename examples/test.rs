@@ -27,6 +27,7 @@ use stl_io::*;
 use std::io::*;
 use std::io::Read;
 use std::fs::File;
+use std::collections::HashMap;
 
 use ar_physics::soft_body::*;
 use ar_physics::soft_body::material_region::*;
@@ -362,7 +363,13 @@ fn main() {
         *shader.light_color = as_vec3_or(&config, "light_color", [1.0,1.0,1.0].into());
 
         let mut mat_number = 0;
-        let (fluids,on_click) = {
+
+        let mut list = Vec::new();
+        let mut names = Vec::new();
+        let mut on_click = Vec::new();
+        let mut interaction_map = HashMap::new();
+
+        {
 
             use toml::value::{Table, Array};
 
@@ -490,6 +497,47 @@ fn main() {
                 }
             }
 
+            fn parse_interation(table: &Value, h: f64) -> MatInteraction {
+                MatInteraction {
+                    strength: as_float_or(table, "contact_strength", 10000.0) as f32,
+                    radius: as_float_or(table, "contact_radius", as_float_or(table, "contact_factor", 2.0)*h) as f32,
+                    friction: as_float_or(table, "friction", 0.0) as f32,
+                    dampening: as_float_or(table, "dampening", 0.0) as f32,
+
+                    potential: {
+                        match table.as_table().unwrap().get("potential").map(|a| a.as_str().unwrap()) {
+                            Some("Zero") | Some("zero") => ContactPotental::Zero,
+                            Some("Constant") | Some("constant") => ContactPotental::Constant,
+                            Some("Linear") | Some("linear") => ContactPotental::Linear,
+                            Some("Tait") | Some("tait") => ContactPotental::Tait,
+                            Some("Hertz") | Some("hertz") => ContactPotental::Hertz,
+                            Some("LennardJones") | Some("Lennard-Jones") | Some("Lennard Jones") |
+                                Some("lennard jones") | Some("lennard-jones") => ContactPotental::LennardJones,
+
+                            _ => ContactPotental::Linear,
+                        }
+                    } as u32
+                }
+
+            }
+
+            fn get_interactions<'a>(
+                name: &'a str, obj: &'a Value, h: f64, map: &mut HashMap<(&'a str,&'a str), MatInteraction>
+            ) {
+                for (name2, interaction) in obj.as_table().unwrap() {
+                    if interaction.as_table().is_some() {
+                        let mut proper_name = name2.as_str() != "region";
+                        proper_name &= name2.as_str() != "union";
+                        proper_name &= name2.as_str() != "intersection";
+                        proper_name &= name2.as_str() != "difference";
+
+                        if proper_name {
+                            map.insert((name, name2.as_str()) , parse_interation(interaction, h as f64));
+                        }
+                    }
+                }
+            }
+
             fn set_colors_and_den(mat:&Value, shader: &mut ParticleShader::Program, id:usize, den: f32) {
                 let color = as_vec4_or(&mat, "color", [0.0,0.0,0.0,1.0].into());
                 shader.c2[id] = color;
@@ -499,27 +547,28 @@ fn main() {
                 shader.densities[id] = den;
             }
 
-            let mut list = Vec::new();
-            let mut on_click = Vec::new();
-
             fn get_packing(region: &Value, h: f32) -> f32 {
                 as_float_or(region, "packing", as_float_or(region, "spacing", 0.5*h as f64)/h as f64) as f32
             }
 
             if let Some(Value::Table(boundaries)) = config.get("boundaries") {
-                for (_, immobile) in boundaries {
+                for (name, immobile) in boundaries {
                     let packing = get_packing(&immobile, h);
                     let friction = as_float_or(&immobile, "friction", 0.0) as f32;
 
                     let region = parse_region_from_mat(immobile.as_table().unwrap());
+
                     list.push(MaterialRegion::new(region, packing, Material::new_immobile(friction)));
+                    names.push(name.as_str());
+                    get_interactions(name.as_str(), &immobile, h as f64, &mut interaction_map);
+
                     set_colors_and_den(&immobile, &mut shader, mat_number, 1.0);
                     mat_number += 1;
                 }
             }
 
             if let Some(Value::Table(objects)) = config.get("objects") {
-                for (_, obj) in objects {
+                for (name, obj) in objects {
                     let table = obj.as_table().unwrap();
                     let mut mat = Material::default();
                     mat.start_den = as_float_or(&obj, "start_density", as_float_or(&obj, "density", 1.0)) as f32;
@@ -589,6 +638,8 @@ fn main() {
 
                     if !table.get("on_click").is_some() {
                         list.push(mat_region);
+                        names.push(name.as_str());
+                        get_interactions(name.as_str(), &obj, h as f64, &mut interaction_map);
                         set_colors_and_den(&obj, &mut shader, mat_number, mat.target_den);
                         mat_number += 1;
                     } else {
@@ -601,7 +652,6 @@ fn main() {
                 }
             }
 
-            (list, on_click)
         };
 
         let integrator: Box<dyn VelIntegrates<_, _>> = {
@@ -621,15 +671,31 @@ fn main() {
             }
         };
 
-        let int1 = vec![None;fluids.len()];
-        let interactions = vec![&int1[0..];fluids.len()];
+        let mut interaction_lists = Vec::new();
+
+        for i in 0..list.len() {
+            let name1 = names[i];
+            let mut sublist = Vec::new();
+            for j in 0..list.len() {
+                let name2 = names[j];
+                sublist.push(
+                    (match interaction_map.get(&(name1,name2)) {
+                        Some(a) => Some(a),
+                        None => interaction_map.get(&(name2,name1))
+                    }).map(|a| *a)
+                );
+            }
+            interaction_lists.push(sublist);
+        }
+
+        let interactions = interaction_lists.iter().map(|l| &l[0..]).collect::<Vec<_>>();
 
         let mut engine = Engine::new();
         engine.add_component(
             "world",
             if tps < 0.0 {ConstantTimer::new_uncapped()} else {ConstantTimer::from_tps(tps)},
             FluidSim::new(&gl_provider,
-                &fluids[0..], &interactions[0..], AABB{min:min, dim:dim}, h, integrator, dt, subticks, g, alpha
+                &list[0..], &interactions[0..], AABB{min:min, dim:dim}, h, integrator, dt, subticks, g, alpha
             ).unwrap()
         );
 

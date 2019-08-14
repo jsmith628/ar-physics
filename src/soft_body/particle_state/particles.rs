@@ -482,7 +482,7 @@ impl Particles {
         let mut i = p_offset;
 
         for p in particles {
-            if materials[p.mat as usize].normal_stiffness!=0.0 || materials[p.mat as usize].shear_stiffness!=0.0 {
+            if materials[p.mat as usize].is_solid() {
                 p.solid_id = (result.len()+offset) as GLuint;
                 result.push(SolidParticle::new((i+p_offset)as GLuint,p.pos));
             }
@@ -533,7 +533,7 @@ impl Particles {
         (&mut self.buf, &mut self.solids)
     }
 
-    pub fn add_particles(&mut self, material: Material, mut particles: Box<[Particle]>) {
+    pub fn add_particles(&mut self, material: Material, mut particles: Box<[Particle]>, h:GLfloat) {
         if particles.len()==0 {return;}
 
         let mat_id = {
@@ -562,25 +562,52 @@ impl Particles {
             //TODO: fix add to the interaction buffer as well
             unsafe {
                 let new_mat = add_to_buffer(self.materials(), Box::new([material]));
+                let (mat_buf, int_buf) = Rc::make_mut(&mut self.materials);
+                *mat_buf = new_mat;
+
+                //next, remake the interaction array
+                let new_len = mat_buf.len();
+                let old_len = new_len - 1;
+                let old_interactions = int_buf.read_into_box();
+                let mut new_interactions = Vec::with_capacity(new_len*new_len);
+
+                let mats = mat_buf.map();
+                for i in 0..old_len {
+                    for j in 0..old_len {
+                        new_interactions.push(old_interactions[i*old_len+j]);
+                    }
+                    new_interactions.push(MatInteraction::default_between(mats[i], mats[old_len], h));
+                }
+                for i in 0..new_len {
+                    new_interactions.push(MatInteraction::default_between(mats[old_len], mats[i], h));
+                }
+                drop(mats);
+
+                new_interactions.shrink_to_fit();
+                *int_buf = Buffer::from_box(&mat_buf.gl_provider(), new_interactions.into_boxed_slice());
+
                 self.time_id += 1; //make this material list the new global one
-                Rc::make_mut(&mut self.materials).0 = new_mat;
+
             }
         }
-
-        let solid_particles = Self::init_solid_particles(&mut particles, &self.materials().map(), self.solids.len(), self.buf.len());
 
         unsafe {
             use gl_struct::gl;
 
-            //add the particles to the buffer
+            //add the solid particles to the buffer
+            if material.is_solid() {
 
+                let solid_particles = Self::init_solid_particles(
+                    &mut particles, &self.materials().map(), self.solids.len(), self.buf.len()
+                );
+
+                let new_buf = add_to_buffer(&self.solids, solid_particles);
+                self.solids = new_buf;
+            }
+
+            //add the particles to the buffer
             let new_buf = add_to_buffer(&self.buf, particles);
             self.buf = new_buf;
-
-            //add the solid particles to the buffer
-
-            let new_buf = add_to_buffer(&self.solids, solid_particles);
-            self.solids = new_buf;
 
         }
 

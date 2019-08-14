@@ -173,6 +173,8 @@ glsl!{$
 
                         MatInteraction inter = interactions[mat_id*materials.length() + mat_2];
                         float contact_pressure = contact_potential(inter.potential, length(r), inter.radius, inter.strength);
+                        // MatInteraction inter = interactions[0];
+                        // float contact_pressure = 0;
 
                         //pressure force
 
@@ -181,21 +183,26 @@ glsl!{$
                             p2/(d2*d2)
                         ) * grad_w(r, h, norm_const);
 
-                        contact_force += (m2*contact_pressure/d2) * grad_w(r, h, norm_const);
-                        force += contact_force;
+                        if(contact_pressure!=0){
+                            contact_force += (m2*contact_pressure/d2) * grad_w(r, h, norm_const);
+
+                            //friction
+                            if((elastic || elastic2 || j<bc) && mat_id != mat_2) {
+                                vec4 r_inv = r / dot(r,r);
+                                vec4 normal_force = r_inv * dot(contact_force, r);
+                                vec4 tangent_vel = v - r_inv* dot(v, r);
+                                tangent_vel = normalize(tangent_vel);
+                                if(!any(isnan(tangent_vel)) && !any(isinf(tangent_vel)))
+                                    force += (inter.friction) * length(normal_force) * normalize(tangent_vel);
+                            }
+
+                            force += contact_force;
+                        }
 
                         //viscocity
                         if(!elastic && j>=bc) force -= m1*m2*(f1+f2)*dot(r,grad_w(r, h, norm_const))*v/(d1*d2*(dot(r,r)+EPSILON*h*h));
 
-                        //friction
-                        if((elastic || elastic2 || j<bc) && mat_id != mat_2) {
-                            vec4 r_inv = r / dot(r,r);
-                            vec4 normal_force = r_inv * dot(contact_force, r);
-                            vec4 tangent_vel = v - r_inv* dot(v, r);
-                            tangent_vel = normalize(tangent_vel);
-                            if(!any(isnan(tangent_vel)) && !any(isinf(tangent_vel)))
-                                force += (inter.friction) * length(normal_force) * normalize(tangent_vel);
-                        }
+
 
                         //artificial viscocity
                         if(j>=bc) force -= m1*m2*(

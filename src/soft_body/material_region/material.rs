@@ -26,6 +26,12 @@ glsl!{$
                 float relaxation_time;
             }
 
+        @Rust
+
+            impl Material {
+                pub fn is_solid(&self) -> bool { self.normal_stiffness!=0.0 || self.shear_stiffness!=0.0 }
+            }
+
     }
 }
 

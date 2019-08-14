@@ -1,10 +1,11 @@
 
 name = "Liquid-Solid test"
 kernel_radius = 0.012
+particle_render_factor = 1.5
 gravity = 3.1
-time_step = 0.001
-subticks = 11
-artificial_viscocity = 200.0
+time_step = 0.0013
+subticks = 2
+artificial_viscocity = 10.0
 integrator = "RK4"
 
 min = [-0.4,-1.0]
@@ -31,7 +32,7 @@ dim = [0.8,1.1]
   color_low_density = [0.0,1.0,1.0,1.0]
   color_high_density = [1.0,1.0,0.0,1.0]
   # region = {min = [0.2,-0.96], dim = [0.07,0.07]}
-  region = {min = [0.0,-0.7], dim = [0.07,0.07]}
+  region = {min = [0.0,-0.6], dim = [0.07,0.07]}
 
 
 [boundaries.border]

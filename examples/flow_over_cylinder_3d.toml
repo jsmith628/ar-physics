@@ -44,3 +44,5 @@ dim = [2.0,2.0,2.0]
   #color_high_density = [1.0,0.0,0.0,0.1]
 
   region = {center = [-0.0,0.3, -0.0], dim = [0.08,0.8, 0.08]}
+  border = {contact_strength = 1000.0}
+  border2 = {contact_strength = 1000.0}

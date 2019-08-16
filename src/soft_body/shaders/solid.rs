@@ -209,26 +209,37 @@ glsl!{$
             void main() {
 
                 //get ids
-                uint p_id = gl_WorkGroupID.x;
-                uint s_id = particles[p_id].solid_id;
+                uint s_id = gl_WorkGroupID.x;
+                uint p_id = solids[s_id].part_id;
                 uint gid = gl_LocalInvocationIndex;
                 uint mat_id = particles[p_id].mat;
+
+                if(gid==0) {
+                    stresses[s_id].part_id = p_id;
+                    stresses[s_id].ref_pos = vec4(0,0,0,0);
+                    stresses[s_id].stress = ZERO;
+                    stresses2[s_id].part_id = p_id;
+                    stresses2[s_id].ref_pos = vec4(0,0,0,0);
+                    stresses2[s_id].stress = ZERO;
+                }
+
+                if(p_id==INVALID_INDEX) return;
+
+                if(gid==0) {
+                    forces[p_id].mat = mat_id;
+                    forces[p_id].solid_id = s_id;
+                    forces[p_id].den = 0;
+                    forces[p_id].pos = vec4(0,0,0,0);
+                    forces[p_id].vel = vec4(0,0,0,0);
+                }
+                barrier();
 
                 //save these properties for convenience
                 float m1 = materials[mat_id].mass;
                 float d1 = particles[p_id].den;
                 bool elastic = s_id!=INVALID_INDEX && (materials[mat_id].normal_stiffness!=0 || materials[mat_id].shear_stiffness!=0);
 
-                if(!elastic) {
-                    if(gid==0) {
-                        forces[p_id].mat = mat_id;
-                        forces[p_id].solid_id = s_id;
-                        forces[p_id].den = 0;
-                        forces[p_id].pos = vec4(0,0,0,0);
-                        forces[p_id].vel = vec4(0,0,0,0);
-                    }
-                    return;
-                }
+                if(!elastic) { return; }
 
                 //local variables for storing the result
                 float den = 0;
@@ -271,6 +282,7 @@ glsl!{$
                             uint p_id2 = particle_index(bucket_id, j);
                             uint s_id2 = particles[p_id2].solid_id;
                             if(particles[p_id2].mat != mat_id) continue;
+                            if(p_id2==INVALID_INDEX || s_id2==INVALID_INDEX) continue;
 
                             float V2 = m1 / particles[p_id2].den;
 
@@ -315,6 +327,8 @@ glsl!{$
                         uint p_id2 = particle_index(bucket_id, j);
                         uint s_id2 = particles[p_id2].solid_id;
                         uint mat_2 = j<bc ? boundary[p_id2].mat : particles[p_id2].mat;
+
+                        if(p_id2==INVALID_INDEX || s_id2==INVALID_INDEX) continue;
 
                         float m2 = materials[mat_2].mass;
                         float f2 = materials[mat_2].visc;
@@ -406,19 +420,9 @@ glsl!{$
                         shared_force[0] += shared_force[i];
                     }
 
-                    forces[p_id].mat = mat_id;
-                    forces[p_id].solid_id = s_id;
-
                     forces[p_id].den = shared_den[0];
                     forces[p_id].vel = shared_force[0]/particles[p_id].den + vec4(0,-g,0,0);
                     forces[p_id].pos = particles[p_id].vel;
-
-                    stresses[s_id].part_id = p_id;
-                    stresses[s_id].ref_pos = vec4(0,0,0,0);
-                    stresses[s_id].stress = ZERO;
-                    stresses2[s_id].part_id = p_id;
-                    stresses2[s_id].ref_pos = vec4(0,0,0,0);
-                    stresses2[s_id].stress = ZERO;
 
                     //get the strain-rate
                     if(elastic) {

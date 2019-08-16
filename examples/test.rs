@@ -770,7 +770,7 @@ fn main() {
 
                 if !m && m_pressed {
                     for (region, relative, color) in on_click.iter() {
-                        shader.densities[mat_number] = 1.0;
+                        shader.densities[mat_number] = region.mat.target_den;
                         shader.c1[mat_number] = *color;
                         shader.c2[mat_number] = *color;
                         shader.c3[mat_number] = *color;
@@ -783,7 +783,9 @@ fn main() {
                             false => None
                         };
 
-                        w.add_particles(region.clone(), offset);
+                        if w.add_particles(region.clone(), offset) {
+                            mat_number += 1;
+                        }
                     }
                 }
 

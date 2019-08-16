@@ -1,7 +1,7 @@
 use super::*;
 
 glsl!{$
-    
+
     pub mod compute_strain {
 
         @Rust
@@ -14,6 +14,7 @@ glsl!{$
 
             #define I (mat4(vec4(1,0,0,0),vec4(0,1,0,0),vec4(0,0,1,0),vec4(0,0,0,1)))
             #define ZERO (mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0)))
+            #define INVALID_INDEX 0xFFFFFFFF
 
             layout(local_size_x = 9, local_size_y = 3, local_size_z = 3) in;
 
@@ -73,12 +74,15 @@ glsl!{$
                 uint p_id = solids[s_id].part_id;
                 uint gid = gl_LocalInvocationIndex;
 
+                if(p_id==INVALID_INDEX || s_id==INVALID_INDEX) return;
+
                 if(gid==0) {
                     strains[s_id][0] = ZERO;
                     strains[s_id][1] = ZERO;
                     strains[s_id][2] = ZERO;
                 }
                 barrier();
+
 
                 //if this isn't an elastic particle, leave
                 if(is_elastic(p_id)) {
@@ -103,6 +107,7 @@ glsl!{$
                         for(uint i=start+sublocal_id; i<end; i+=num_sublocal) {
                             uint p_id2 = particle_index(b_id, i);
                             uint s_id2 = particles[p_id2].solid_id;
+                            if(p_id2==INVALID_INDEX || s_id2==INVALID_INDEX) continue;
                             if(is_elastic(p_id2)) {
                                 float V2 = materials[particles[p_id2].mat].mass / particles[p_id2].den;
                                 vec4 dX = solids[s_id2].ref_pos - solids[s_id].ref_pos;
@@ -139,6 +144,7 @@ glsl!{$
                         for(uint i=start+sublocal_id; i<end; i+=num_sublocal) {
                             uint p_id2 = particle_index(b_id, i);
                             uint s_id2 = particles[p_id2].solid_id;
+                            if(p_id2==INVALID_INDEX || s_id2==INVALID_INDEX) continue;
                             if(!is_elastic(p_id2)) continue;
 
                             float V2 = materials[particles[p_id2].mat].mass / particles[p_id2].den;

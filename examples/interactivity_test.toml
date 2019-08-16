@@ -3,45 +3,58 @@ name = "Flow over a cylinder in 2D"
 kernel_radius = 0.016
 gravity = 3.1
 time_step = 0.01
-subticks = 10
+subticks = 15
 artificial_viscocity = 20.0
 integrator = "RK4"
 
 min = [-0.2,-1.0]
 dim = [0.4,1.1]
 
-[objects.f1]
-  speed_of_sound = 1000.0
-  viscocity = 0.0
-  color = [0.0,0.0,1.0,1.0]
-  color_low_density = [0.0,1.0,0.0,1.0]
-  color_high_density = [1.0,0.0,0.0,1.0]
-
-  region = {center = [0.0,-0.5], dim = [0.12,0.12]}
-
-# [objects.on_click]
-#   on_click = "Relative"
-#   packing = 0.7
-#   density = 1.0
-#   normal_stiffness = -400000.0
-#   shear_stiffness = -100000.0
-#   # normal_dampening = -5000.0
-#   shear_dampening = -500.0
+# [objects.f1]
+#   speed_of_sound = 1000.0
+#   viscocity = 0.0
 #   color = [0.0,0.0,1.0,1.0]
-#   color_high_density = [1.0,0.0,0.0,1.0]
 #   color_low_density = [0.0,1.0,0.0,1.0]
+#   color_high_density = [1.0,0.0,0.0,1.0]
 #
-#   region = {center = [0.0,0.0], dim = [0.06,0.06]}
+#   region = {center = [0.0,-0.5], dim = [0.12,0.12]}
+
+[objects.s1]
+  packing = 0.7
+  density = 1.0
+  normal_stiffness = -400000.0
+  shear_stiffness = -100000.0
+  # normal_dampening = -5000.0
+  shear_dampening = -500.0
+  color = [0.0,0.0,1.0,1.0]
+  color_high_density = [1.0,0.0,0.0,1.0]
+  color_low_density = [0.0,1.0,0.0,1.0]
+
+  region = {center = [0.0,-0.5], dim = [0.06,0.06]}
 
 [objects.on_click]
   on_click = "Relative"
-  speed_of_sound = 1000.0
-  viscocity = 0.0
+  packing = 0.7
+  density = 1.0
+  normal_stiffness = -400000.0
+  shear_stiffness = -100000.0
+  # normal_dampening = -5000.0
+  shear_dampening = -500.0
   color = [0.0,0.0,1.0,1.0]
-  color_low_density = [0.0,1.0,0.0,1.0]
   color_high_density = [1.0,0.0,0.0,1.0]
+  color_low_density = [0.0,1.0,0.0,1.0]
 
-  region = {center = [0.0,0.0], dim = [0.03,0.03]}
+  region = {center = [0.0,0.0], dim = [0.06,0.06]}
+
+# [objects.on_click]
+#   on_click = "Relative"
+#   speed_of_sound = 1000.0
+#   viscocity = 0.0
+#   color = [0.0,0.0,1.0,1.0]
+#   color_low_density = [0.0,1.0,0.0,1.0]
+#   color_high_density = [1.0,0.0,0.0,1.0]
+#
+#   region = {center = [0.0,0.0], dim = [0.03,0.03]}
 
 
 [boundaries.border]

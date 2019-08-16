@@ -469,6 +469,8 @@ unsafe fn add_to_buffer<T:Copy>(old: &Buffer<[T],ReadWrite>, extra: Box<[T]>) ->
     gl::BindBuffer(gl::COPY_READ_BUFFER, 0);
     gl::BindBuffer(gl::COPY_WRITE_BUFFER, 0);
 
+    gl::MemoryBarrier(gl::ALL_BARRIER_BITS);
+
     let len = new_buf.len();
     new_buf.map_mut()[old.len()..len].copy_from_slice(&extra);
 
@@ -480,16 +482,19 @@ impl Particles {
     fn init_solid_particles(particles: &mut [Particle], materials: &[Material], offset:usize, p_offset:usize) -> Box<[SolidParticle]> {
         let mut result = Vec::new();
         let mut i = p_offset;
+        let mut j = offset;
 
         for p in particles {
             if materials[p.mat as usize].is_solid() {
-                p.solid_id = (result.len()+offset) as GLuint;
-                result.push(SolidParticle::new((i+p_offset)as GLuint,p.pos));
+                p.solid_id = j as GLuint;
+                result.push(SolidParticle::new(i as GLuint,p.pos));
+                j += 1;
             }
             i += 1;
         }
 
-        if result.len() == 0 { result.push(SolidParticle::new(!0,[0.0,0.0,0.0,0.0].into())) }
+        if result.len() == 0 { result.push(SolidParticle::new(0xFFFFFFFF,[0.0,0.0,0.0,0.0].into())) }
+        result.shrink_to_fit();
 
         result.into_boxed_slice()
     }
@@ -537,7 +542,7 @@ impl Particles {
         if particles.len()==0 {return;}
 
         let mat_id = {
-            if material.normal_stiffness!=0.0 || material.shear_stiffness!=0.0 {
+            if material.is_solid() {
                 self.materials().len()
             } else {
                 let mut i = 0;
@@ -559,7 +564,7 @@ impl Particles {
 
         //add the new material, if it needs to be added
         if mat_id == self.materials().len() {
-            //TODO: fix add to the interaction buffer as well
+
             unsafe {
                 let new_mat = add_to_buffer(self.materials(), Box::new([material]));
                 let (mat_buf, int_buf) = Rc::make_mut(&mut self.materials);
@@ -578,9 +583,16 @@ impl Particles {
                     }
                     new_interactions.push(MatInteraction::default_between(mats[i], mats[old_len], h));
                 }
-                for i in 0..new_len {
+                for i in 0..old_len {
                     new_interactions.push(MatInteraction::default_between(mats[old_len], mats[i], h));
                 }
+
+                if material.is_solid() {
+                    new_interactions.push(MatInteraction::default());
+                } else {
+                    new_interactions.push(MatInteraction::default_between(mats[old_len], mats[old_len], h));
+                }
+
                 drop(mats);
 
                 new_interactions.shrink_to_fit();
@@ -596,18 +608,19 @@ impl Particles {
 
             //add the solid particles to the buffer
             if material.is_solid() {
-
-                let solid_particles = Self::init_solid_particles(
+                let sp = Self::init_solid_particles(
                     &mut particles, &self.materials().map(), self.solids.len(), self.buf.len()
                 );
-
-                let new_buf = add_to_buffer(&self.solids, solid_particles);
+                let new_buf = add_to_buffer(&self.solids, sp);
                 self.solids = new_buf;
             }
 
             //add the particles to the buffer
             let new_buf = add_to_buffer(&self.buf, particles);
             self.buf = new_buf;
+
+            // println!("{:?}", self.solids.read_into_box().iter().map(|p|p.part_id).collect::<Vec<_>>());
+
 
         }
 

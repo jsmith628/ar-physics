@@ -169,7 +169,7 @@ impl FluidSim {
         &self.particles
     }
 
-    pub fn add_particles(&mut self, obj: MaterialRegion, offset: Option<vec4>) {
+    pub fn add_particles(&mut self, obj: MaterialRegion, offset: Option<vec4>) -> bool {
         let h = *self.fluid_forces.borrow().h;
         let (mut p, mat) = obj.gen_particles(h, 0);
 
@@ -182,9 +182,19 @@ impl FluidSim {
             }
         }
 
-        self.state[0].map_mut(|particles| particles.add_particles(mat, p.into_boxed_slice(), h));
+        let mut mat_added = false;
+
+        self.state[0].map_mut(
+            |particles| {
+                let num_mat = particles.materials().len();
+                let new_part = particles.add_particles(mat, p.into_boxed_slice(), h);
+                if particles.materials().len() != num_mat {mat_added = true;}
+                new_part
+            }
+        );
         self.particles = self.state[0].clone().map_into(|p| p).unwrap();
 
+        mat_added
     }
 
 }

@@ -1,5 +1,41 @@
 use super::*;
 
+glsl! {$
+
+    pub mod clear_solids {
+        @Rust
+            use super::*;
+
+            impl Program {
+                pub unsafe fn clear_solids(&self, p: &SolidParticleBuffer, dest: &mut SolidParticleBuffer) {
+                    #[allow(mutable_transmutes)]
+                    let ub = ::std::mem::transmute::<_, &mut SolidParticleBuffer>(p);
+                    self.compute(((dest.len() as f32)/128.0).ceil() as GLuint, 1, 1, ub, dest);
+                }
+            }
+
+        @Compute
+            #version 460
+
+            layout(local_size_x = 128, local_size_y = 1, local_size_z = 1) in;
+            extern struct SolidParticle;
+
+            layout(std430) buffer solids_list { readonly restrict SolidParticle p[]; };
+            layout(std430) buffer dest_list { writeonly restrict SolidParticle dest[]; };
+
+            void main() {
+                uint id = gl_GlobalInvocationID.x;
+                if(id < dest.length()) {
+                    dest[id].part_id = p[id].part_id;
+                    dest[id].ref_pos = vec4(0,0,0,0);
+                    dest[id].stress = mat4(vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0),vec4(0,0,0,0));
+                }
+            }
+
+
+    }
+}
+
 glsl!{$
 
     pub mod solid_forces {
@@ -182,7 +218,6 @@ glsl!{$
             layout(std430) buffer boundary_list { readonly restrict Particle boundary[]; };
             layout(std430) buffer derivatives { writeonly restrict Particle forces[]; };
             layout(std430) buffer solid_derivatives { writeonly restrict SolidParticle stresses[]; };
-            layout(std430) buffer solid_derivatives2 { writeonly restrict SolidParticle stresses2[]; };
 
             layout(std430) buffer material_list { readonly restrict Material materials[]; };
             layout(std430) buffer strain_list { readonly restrict mat4 strains[][3]; };
@@ -218,9 +253,6 @@ glsl!{$
                     stresses[s_id].part_id = p_id;
                     stresses[s_id].ref_pos = vec4(0,0,0,0);
                     stresses[s_id].stress = ZERO;
-                    stresses2[s_id].part_id = p_id;
-                    stresses2[s_id].ref_pos = vec4(0,0,0,0);
-                    stresses2[s_id].stress = ZERO;
                 }
 
                 if(p_id==INVALID_INDEX) return;

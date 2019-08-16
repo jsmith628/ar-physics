@@ -37,7 +37,8 @@ pub struct FluidSim {
     //shaders
     fluid_forces: RefCell<fluid_forces::Program>,
     solid_forces: RefCell<solid_forces::Program>,
-    strain: RefCell<compute_strain::Program>
+    strain: RefCell<compute_strain::Program>,
+    clear_solids: RefCell<clear_solids::Program>
 
 }
 
@@ -131,6 +132,7 @@ impl FluidSim {
             fluid_forces: RefCell::new(fluid_forces::init(gl).unwrap()),
             solid_forces: RefCell::new(solid_forces::init(gl).unwrap()),
             strain: RefCell::new(compute_strain::init(gl).unwrap()),
+            clear_solids: RefCell::new(clear_solids::init(gl).unwrap()),
         };
 
         use self::kernel::norm_const;
@@ -207,6 +209,7 @@ impl ::ar_engine::engine::Component for FluidSim {
         let ff = &self.fluid_forces;
         let sf = &self.solid_forces;
         let strains = &self.strain;
+        let clear_solids = &self.clear_solids;
 
         self.state = self.integrator.init_with_vel(
             ParticleState::new(self.particles.clone()),
@@ -216,6 +219,7 @@ impl ::ar_engine::engine::Component for FluidSim {
                 &mut ff.borrow_mut(),
                 &mut sf.borrow_mut(),
                 &mut strains.borrow_mut(),
+                &mut clear_solids.borrow_mut(),
                 &mut neighbors.borrow_mut(),
                 state
             )
@@ -235,6 +239,7 @@ impl ::ar_engine::engine::Component for FluidSim {
             let ff = &self.fluid_forces;
             let sf = &self.solid_forces;
             let strains = &self.strain;
+            let clear_solids = &self.clear_solids;
 
             state = Some(
                 self.integrator.step_with_vel(
@@ -246,6 +251,7 @@ impl ::ar_engine::engine::Component for FluidSim {
                         &mut ff.borrow_mut(),
                         &mut sf.borrow_mut(),
                         &mut strains.borrow_mut(),
+                        &mut clear_solids.borrow_mut(),
                         &mut neighbors.borrow_mut(),
                         state
                     )

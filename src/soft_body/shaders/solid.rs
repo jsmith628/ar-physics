@@ -244,18 +244,10 @@ glsl!{$
             void main() {
 
                 //get ids
-                uint s_id = gl_WorkGroupID.x;
-                uint p_id = solids[s_id].part_id;
+                uint p_id = gl_WorkGroupID.x;
+                uint s_id = particles[p_id].solid_id;
                 uint gid = gl_LocalInvocationIndex;
                 uint mat_id = particles[p_id].mat;
-
-                if(gid==0) {
-                    stresses[s_id].part_id = p_id;
-                    stresses[s_id].ref_pos = vec4(0,0,0,0);
-                    stresses[s_id].stress = ZERO;
-                }
-
-                if(p_id==INVALID_INDEX) return;
 
                 if(gid==0) {
                     forces[p_id].mat = mat_id;
@@ -264,6 +256,18 @@ glsl!{$
                     forces[p_id].pos = vec4(0,0,0,0);
                     forces[p_id].vel = vec4(0,0,0,0);
                 }
+
+                if(s_id!=INVALID_INDEX){
+                    if(gid==0) {
+                        stresses[s_id].part_id = p_id;
+                        stresses[s_id].ref_pos = vec4(0,0,0,0);
+                        stresses[s_id].stress = ZERO;
+                    }
+                } else {
+                    return;
+                }
+
+
                 barrier();
 
                 //save these properties for convenience
@@ -386,7 +390,7 @@ glsl!{$
                             vec4 dx = r;
                             vec4 dX = solids[s_id2].ref_pos - solids[s_id].ref_pos;
                             float contact = h;
-                            float r_cut = 2*contact;
+                            float r_cut = 8*contact;
 
                             bool in_contact = (!elastic || !elastic2 || dot(dX,dX)>(r_cut*r_cut)) && dot(dx,dx)<r_cut*r_cut;
 

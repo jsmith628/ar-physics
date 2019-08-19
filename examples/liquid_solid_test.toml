@@ -24,10 +24,10 @@ dim = [0.8,1.1]
 [objects.box]
   packing = 0.7
   density = 1.0
-  normal_stiffness = -40000.0
-  shear_stiffness = -30000.0
-  normal_dampening = -200.0
-  shear_dampening = -200.0
+  normal_stiffness = -400000.0
+  shear_stiffness = -50000.0
+  # normal_dampening = -200.0
+  shear_dampening = -500.0
   color = [0.0,1.0,0.0,1.0]
   color_low_density = [0.0,1.0,1.0,1.0]
   color_high_density = [1.0,1.0,0.0,1.0]

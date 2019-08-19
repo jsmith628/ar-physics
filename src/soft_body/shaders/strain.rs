@@ -109,7 +109,8 @@ glsl!{$
                             uint s_id2 = particles[p_id2].solid_id;
                             if(p_id2==INVALID_INDEX || s_id2==INVALID_INDEX) continue;
                             if(is_elastic(p_id2)) {
-                                float V2 = materials[particles[p_id2].mat].mass / particles[p_id2].den;
+                                // float V2 = materials[particles[p_id2].mat].mass / particles[p_id2].den;
+                                float V2 = materials[particles[p_id2].mat].mass / materials[particles[p_id2].mat].start_den;
                                 vec4 dX = solids[s_id2].ref_pos - solids[s_id].ref_pos;
 
                                 correction[gid] += V2*outerProduct(grad_w(dX, h, norm_const), dX);
@@ -147,7 +148,8 @@ glsl!{$
                             if(p_id2==INVALID_INDEX || s_id2==INVALID_INDEX) continue;
                             if(!is_elastic(p_id2)) continue;
 
-                            float V2 = materials[particles[p_id2].mat].mass / particles[p_id2].den;
+                            // float V2 = materials[particles[p_id2].mat].mass / particles[p_id2].den;
+                            float V2 = materials[particles[p_id2].mat].mass / materials[particles[p_id2].mat].start_den;
                             vec4 dX = solids[s_id2].ref_pos - solids[s_id].ref_pos;
                             vec4 dx = particles[p_id2].pos - particles[p_id].pos;
                             vec4 dv = particles[p_id2].vel - particles[p_id].vel;

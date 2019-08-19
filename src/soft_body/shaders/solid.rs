@@ -409,7 +409,7 @@ glsl!{$
                                             dx/(l+EPSILON*h);
                                 }
 
-                                if(mat_id == mat_2  && in_contact) {
+                                if(mat_id == mat_2  && in_contact && !materials[mat_id].plastic) {
                                     float r_geom = contact*contact / r_cut;
                                     float dr = max(r_cut - l, 0);
                                     contact_force = -5000*sqrt(dr*r_geom) * r / l;

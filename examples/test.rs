@@ -290,6 +290,7 @@ fn main() {
     let mut config_loc = None;
     let (mut win_w, mut win_h) = (640*3/2, 480*3/2);
     let (mut fps, mut tps) = (75.0, 75.0);
+    let mut record = false;
 
     let mut state = ParserState::Default;
 
@@ -310,6 +311,7 @@ fn main() {
                     "-h"|"--height" => state = ParserState::Height,
                     "-f"|"--fps" => state = ParserState::FPS,
                     "-t"|"--tps" => state = ParserState::TPS,
+                    "-r"|"--record" => record = true,
                     _ => config_loc = Some(arg)
                 }
             }
@@ -345,6 +347,7 @@ fn main() {
 
         let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
         let mut window = glfw.create_window(win_w, win_h, title, glfw::WindowMode::Windowed).unwrap().0;
+        if record {window.set_resizable(false);}
 
         glfw::Context::make_current(&mut window);
         glfw.set_swap_interval(glfw::SwapInterval::None);
@@ -690,6 +693,8 @@ fn main() {
 
         let interactions = interaction_lists.iter().map(|l| &l[0..]).collect::<Vec<_>>();
 
+        if record {unsafe {ar_physics::LOGGING = false}; }
+
         let mut engine = Engine::new();
         engine.add_component(
             "world",
@@ -710,6 +715,10 @@ fn main() {
         let mut scale = 1.0;
         let mut rot = 0.0;
 
+        let mut pixels = if record {
+            Some(vec![0u8; 3usize * win_w as usize * win_h as usize].into_boxed_slice())
+        } else {None};
+
         engine.add_component_from_fn(
             "renderer",
             if fps < 0.0 {ConstantTimer::new_uncapped()} else {ConstantTimer::from_tps(fps)},
@@ -718,6 +727,28 @@ fn main() {
                 let (width, height) = window1.borrow().get_framebuffer_size();
                 let s = width.min(height);
                 unsafe {gl::Viewport((width-s)/2, (height-s)/2, s, s)};
+
+                if let Some(mut pixels) = pixels.as_mut() {
+                    use std::io::Write;
+
+                    unsafe {
+                        gl::ReadPixels(
+                            0,0,
+                            win_w as gl::types::GLsizei,win_h as gl::types::GLsizei,
+                            gl::RGB,gl::UNSIGNED_BYTE,
+                            &mut pixels[0] as *mut u8 as *mut gl::types::GLvoid
+                        );
+                    }
+
+                    // for pixel in pixels.chunks(3) {
+                    //     print!("{:?} ", pixel);
+                    // }
+                    // println!();
+
+                    std::io::stdout().write(&**pixels).unwrap();
+
+                }
+
 
                 glfw::Context::swap_buffers(&mut *window1.borrow_mut());
                 glfw.poll_events();

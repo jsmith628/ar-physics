@@ -1,11 +1,11 @@
 
 name = "Wave in 3D"
-kernel_radius = 0.02
+kernel_radius = 0.013
 particle_render_factor = 0.6
 lighting = true
 gravity = 2.1
 time_step = 0.01
-subticks = 2
+subticks = 10
 artificial_viscocity = 200.0
 integrator = "RK4"
 
@@ -31,7 +31,7 @@ dim = [2.0,2.0,2.0]
   #color_high_density = [1.0,0.0,0.0,0.1]
 
   union = [
-    {center = [-0.4,-0.15, -0.0], dim = [0.08, 0.6, 0.115]},
-    {center = [0.0,-0.485, -0.0], dim = [0.885,0.12, 0.115]}
+    {center = [-0.36,0.05, -0.0], dim = [0.16, 1.0, 0.115]},
+    {center = [0.0,-0.435, -0.0], dim = [0.885,0.22, 0.115]}
   ]
   border = {contact_strength = 1000.0}

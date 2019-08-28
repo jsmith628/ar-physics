@@ -229,7 +229,6 @@ impl NeighborList {
             None => true
         };
         if reset {
-            println!("{}",particles.particles().len());
             self.indices = unsafe {
                 Some(Buffer::<[_],_>::uninitialized(&GLProvider::get_current().unwrap(), particles.particles().len().max(1)))
             };

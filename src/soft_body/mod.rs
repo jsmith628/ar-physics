@@ -104,7 +104,7 @@ impl FluidSim {
                         MatInteraction::default()
                     }
                 };
-                println!("{:?}", interaction);
+                if unsafe {crate::LOGGING} { println!("{:?}", interaction); }
                 inter[i*materials.len() + j] = interaction;
                 inter[j*materials.len() + i] = interaction;
             }
@@ -116,7 +116,9 @@ impl FluidSim {
             d
         };
 
-        println!("dim={}\nboundary particles: {}\nmobile particles: {}", dim, boundary.len(), particles.len());
+        if unsafe {crate::LOGGING} {
+            println!("dim={}\nboundary particles: {}\nmobile particles: {}", dim, boundary.len(), particles.len());
+        }
 
         let fs = FluidSim {
             integrator: integrator,
@@ -228,7 +230,8 @@ impl ::ar_engine::engine::Component for FluidSim {
 
     fn update(&mut self) {
         let prof = unsafe { crate::PROFILER.as_mut().unwrap() };
-        println!("{:?}", prof.new_frame());
+        let frame = prof.new_frame();
+        if unsafe {crate::LOGGING} { println!("{:?}", frame); }
 
         let dt = self.timestep / self.subticks as f32;
         let mut state = None;

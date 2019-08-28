@@ -90,7 +90,7 @@ impl MaterialRegion {
         let mut mat:Material = self.mat.into();
         mat.mass = (box_mass / (num_in_box as f64)) as f32;
 
-        println!("{:?}", mat);
+        if unsafe {crate::LOGGING} { println!("{:?}", mat); }
 
         return (list, mat);
 

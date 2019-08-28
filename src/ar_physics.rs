@@ -17,4 +17,5 @@ pub mod soft_body;
 pub mod profiler;
 
 
+pub static mut LOGGING: bool = true;
 pub(crate) static mut PROFILER: Option<crate::profiler::Profiler> = None;

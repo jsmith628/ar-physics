@@ -1,6 +1,6 @@
 
 use super::*;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub use self::region::*;
 pub use self::material::*;
@@ -16,29 +16,29 @@ pub type Materials = (MaterialBuffer, InteractionBuffer);
 
 #[derive(Clone)]
 pub struct MaterialRegion {
-    pub region: Rc<dyn Region>,
+    pub region: Arc<dyn Region+Send+Sync>,
     pub packing_coefficient: f32,
     pub mat: Material,
-    pub vel: Rc<dyn Fn(vec4)->vec4>
+    pub vel: Arc<dyn Fn(vec4)->vec4>
 }
 
 impl MaterialRegion {
 
-    pub fn new<R:Region>(region: R, packing: f32, mat: Material) -> Self {
+    pub fn new<R:Region+Send+Sync>(region: R, packing: f32, mat: Material) -> Self {
         MaterialRegion {
-            region: Rc::new(region),
+            region: Arc::new(region),
             packing_coefficient: packing,
             mat: mat,
-            vel: Rc::new(|_| vec4::default())
+            vel: Arc::new(|_| vec4::default())
         }
     }
 
-    pub fn with_vel<R:Region, V:Fn(vec4)->vec4+'static>(region: R, packing: f32, mat: Material, v:V) -> Self {
+    pub fn with_vel<R:Region+Send+Sync, V:Fn(vec4)->vec4+'static>(region: R, packing: f32, mat: Material, v:V) -> Self {
         MaterialRegion {
-            region: Rc::new(region),
+            region: Arc::new(region),
             packing_coefficient: packing,
             mat: mat,
-            vel: Rc::new(v)
+            vel: Arc::new(v)
         }
     }
 
@@ -47,11 +47,22 @@ impl MaterialRegion {
         h = self.packing_coefficient * h;
 
         let bound = self.region.bound();
-        let mut list = Vec::with_capacity((0..4).fold(1, |c, i| c*(1.0f32.max(bound.dim[i]/h) as usize)));
+        let list = Vec::with_capacity((0..4).fold(1, |c, i| c*(1.0f32.max(bound.dim[i]/h) as usize)));
+
+        // println!("{:?}", bound);
 
         let mut num_in_box = 0u64;
         let mut pos = bound.min;
         let start_density = self.mat.start_den;
+
+        use std::thread::*;
+        use std::sync::*;
+
+        let threads = Arc::new((Mutex::new(0), Condvar::new()));
+        let list_lock = Arc::new(Mutex::new(list));
+
+        const JOB_SIZE:usize = 16;
+        let mut particles_to_test = Vec::<(vec4, vec4)>::with_capacity(JOB_SIZE);
 
         let mut offset2 = 0.0;
         loop {
@@ -61,14 +72,39 @@ impl MaterialRegion {
                 pos[0] = bound.min[0]+(offset+offset2);
                 loop {
 
-                    num_in_box += 1;
-                    if self.region.contains(pos) {
-                        let mut particle = Particle::with_pos(pos.into());
-                        particle.vel = (self.vel)(particle.pos);
-                        particle.den = start_density;
-                        particle.mat = mat_id;
-                        list.push(particle);
+                    if particles_to_test.len() >= JOB_SIZE {
+                        *(threads.1.wait_until(
+                            threads.0.lock().unwrap(), |count| *count<12
+                        ).unwrap()) += 1;
+
+                        let region = self.region.clone();
+                        let list_arc = list_lock.clone();
+                        let thread_arc = threads.clone();
+
+                        let mut particles = Vec::with_capacity(JOB_SIZE);
+                        ::std::mem::swap(&mut particles_to_test, &mut particles);
+
+                        spawn(
+                            move || {
+                                for p in particles {
+                                    if region.contains(p.0) {
+                                        let mut particle = Particle::with_pos(p.0);
+                                        particle.vel = p.1;
+                                        particle.den = start_density;
+                                        particle.mat = mat_id;
+                                        list_arc.lock().unwrap().push(particle);
+                                    }
+                                }
+
+                                drop(list_arc);
+                                *thread_arc.0.lock().unwrap() -= 1;
+                                thread_arc.1.notify_all();
+                            }
+                        );
                     }
+
+                    num_in_box += 1;
+                    particles_to_test.push((pos.into(), (self.vel)(pos.into())));
 
                     pos[0] += h;
                     if pos[0] - bound.min[0] > bound.dim[0] || bound.dim[0]==0.0  { break };
@@ -81,6 +117,10 @@ impl MaterialRegion {
             offset2 = if offset2==0.0 {h/8f32.sqrt()} else {0.0};
             if pos[2] - bound.min[2] > bound.dim[2] || bound.dim[2]==0.0 { break };
         }
+
+        threads.1.wait_until(threads.0.lock().unwrap(), |count| *count<=0).unwrap();
+
+        let mut list = Arc::try_unwrap(list_lock).unwrap().into_inner().unwrap();
         list.shrink_to_fit();
 
         let box_mass = start_density as f64 * (0..4).fold(1.0,

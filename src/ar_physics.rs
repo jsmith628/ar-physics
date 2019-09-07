@@ -3,6 +3,7 @@
 #![feature(trivial_bounds)]
 #![feature(allocator_api)]
 #![feature(non_exhaustive)]
+#![feature(wait_until)]
 
 
 #[macro_use] extern crate macro_program;

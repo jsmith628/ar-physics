@@ -12,7 +12,7 @@ extern crate ar_engine;
 extern crate numerical_integration;
 
 
-use std::rc::Rc;
+use std::sync::Arc;
 use std::cell::RefCell;
 
 use gl_struct::*;
@@ -175,20 +175,27 @@ pub struct Mesh {
     mesh:IndexedMesh
 }
 
-impl Region for Mesh {
-    fn bound(&self) -> AABB {
-        let mut min = [self.mesh.vertices[0][0], self.mesh.vertices[0][1], self.mesh.vertices[0][2],0.0];
-        let mut max = min;
+pub struct Surface {
+    mesh:IndexedMesh,
+    border: f32
+}
 
-        for v in self.mesh.vertices.iter() {
-            for i in 0..3 {
-                min[i] = v[i].min(min[i]);
-                max[i] = v[i].max(max[i]);
-            }
+fn point_bound(verts: &Vec<Vertex>) -> AABB {
+    let mut min = [verts[0][0], verts[0][1], verts[0][2], 0.0];
+    let mut max = min;
+
+    for v in verts.iter() {
+        for i in 0..3 {
+            min[i] = v[i].min(min[i]);
+            max[i] = v[i].max(max[i]);
         }
-
-        AABB::from_min_max(min.into(),max.into())
     }
+
+    AABB::from_min_max(min.into(),max.into())
+}
+
+impl Region for Mesh {
+    fn bound(&self) -> AABB { point_bound(&self.mesh.vertices) }
 
     fn contains(&self, p: vec4) -> bool {
 
@@ -198,7 +205,7 @@ impl Region for Mesh {
         //because we don't actually have a good dot product operation
         fn dot(v1:&[f32], v2: &[f32]) -> f32 { v1[0]*v2[0] + v1[1]*v2[1] }
 
-        self.mesh.faces.par_iter().map(
+        self.mesh.faces.iter().map(
             |f| [
                 self.mesh.vertices[f.vertices[0]],
                 self.mesh.vertices[f.vertices[1]],
@@ -236,10 +243,71 @@ impl Region for Mesh {
                     false
                 }
             }
-        ).reduce(|| false, |b1,b2| b1^b2)
+        ).fold(false, |b1,b2| b1^b2)
     }
 }
 
+impl Region for Surface {
+
+    fn bound(&self) -> AABB {
+        let mut bound = point_bound(&self.mesh.vertices);
+        for i in 0..3 {
+            bound.min[i] -= self.border;
+            bound.dim[i] += self.border*2.0;
+        }
+        bound
+    }
+
+    fn contains(&self, p: vec4) -> bool {
+
+        fn dot(v1: &[f32], v2: &[f32]) -> f32 {
+            v1[0]*v2[0] + v1[1]*v2[1] + v1[2]*v2[2]
+        }
+
+        fn cross(v1: &[f32], v2: &[f32]) -> [f32;3] {
+            [v1[1]*v2[2] - v1[2]*v2[1], v1[2]*v2[0] - v1[0]*v2[2], v1[0]*v2[1] - v1[1]*v2[0]]
+        }
+
+        fn sub(v1: &[f32], v2: &[f32]) -> [f32;3] { [v1[0]-v2[0],v1[1]-v2[1],v1[2]-v2[2]] }
+
+        for v in self.mesh.vertices.iter() {
+            let d = sub(&p.value, v);
+            if dot(&d, &d) <= self.border*self.border { return true; }
+        }
+
+
+        for f in self.mesh.faces.iter() {
+            let n = f.normal;
+
+            let (a,b,c) = (
+                self.mesh.vertices[f.vertices[0]],
+                self.mesh.vertices[f.vertices[1]],
+                self.mesh.vertices[f.vertices[2]]
+            );
+
+            let d = sub(&p.value, &a);
+
+            if dot(&d, &n).abs() <= dot(&n, &n).sqrt()*self.border {
+
+                let (s1, s2, s3, s4) = (sub(&b,&a), sub(&c,&a), sub(&c,&b), sub(&a,&b));
+
+                let d2 = sub(&p.value, &b);
+
+                let (n1, n2, n3) = (cross(&s1, &n), cross(&s2, &n), cross(&s3, &n));
+
+                if
+                    dot(&d, &n1).signum() == dot(&s2, &n1).signum() &&
+                    dot(&d, &n2).signum() == dot(&s1, &n2).signum() &&
+                    dot(&d2, &n3).signum() == dot(&s4, &n3).signum()
+                { return true; }
+            }
+        }
+
+        return false;
+
+    }
+
+}
 
 
 
@@ -335,6 +403,7 @@ fn main() {
 
         let title = as_str_or(&config, "name", "Fluid Test");
         let lighting = as_bool_or(&config, "lighting", config.as_table().unwrap().get("light_pos").is_some());
+        let view_angle = as_float_or(&config, "view_angle", 0.0);
 
         let subticks = as_int_or(&config, "subticks", 1) as u32;
         let h = as_float_or(&config, "kernel_radius", 1.0/64.0) as f32;
@@ -376,9 +445,9 @@ fn main() {
 
             use toml::value::{Table, Array};
 
-            fn parse_region_from_mat(region: &Table) -> Rc<dyn Region> {
+            fn parse_region_from_mat(region: &Table) -> Arc<dyn Region+Send+Sync> {
 
-                type Reg = Rc<dyn Region>;
+                type Reg = Arc<dyn Region+Send+Sync>;
 
                 fn fold_array<F:Fn(Reg,Reg) -> Reg>(arr: &Array, f:F) -> Reg {
                     let mut iter = arr.into_iter().map(|s| parse_region(s.as_table().unwrap()));
@@ -389,7 +458,16 @@ fn main() {
                 #[allow(unused_assignments)]
                 fn parse_region(region: &Table) -> Reg {
                     if let Some(Value::String(path)) = region.get("model") {
-                        Rc::new(Mesh{mesh:read_stl(&mut File::open(path).unwrap()).unwrap()})
+                        if let Some(border) = region.get("border").and_then(|b| b.as_float()) {
+                            Arc::new(
+                                Surface{
+                                    mesh: read_stl(&mut File::open(path).unwrap()).unwrap(),
+                                    border: border as f32
+                                }
+                            )
+                        } else {
+                            Arc::new(Mesh{mesh:read_stl(&mut File::open(path).unwrap()).unwrap()})
+                        }
                     } else {
                         let mut boxed = true;
                         let mut min = [0.0,0.0,0.0,0.0].into();
@@ -420,9 +498,9 @@ fn main() {
 
                         if boxed {
                             if let Some(depth) = border {
-                                Rc::new(AABB {min: min, dim: dim}.border(depth))
+                                Arc::new(AABB {min: min, dim: dim}.border(depth))
                             } else {
-                                Rc::new(AABB {min: min, dim: dim})
+                                Arc::new(AABB {min: min, dim: dim})
                             }
                         } else {
                             for i in 0..4 {
@@ -430,9 +508,9 @@ fn main() {
                                 min[i] += dim[i];
                             }
                             if let Some(depth) = border {
-                                Rc::new(AABE {center: min, radii: dim}.border(depth))
+                                Arc::new(AABE {center: min, radii: dim}.border(depth))
                             } else {
-                                Rc::new(AABE {center: min, radii: dim})
+                                Arc::new(AABE {center: min, radii: dim})
                             }
                         }
                     }
@@ -441,11 +519,11 @@ fn main() {
 
 
                 if let Some(Value::Array(arr)) = region.get("union") {
-                    fold_array(arr, |s1,s2| Rc::new(Union(s1,s2)))
+                    fold_array(arr, |s1,s2| Arc::new(Union(s1,s2)))
                 } else if let Some(Value::Array(arr)) = region.get("difference") {
-                    fold_array(arr, |s1,s2| Rc::new(Difference(s1,s2)))
+                    fold_array(arr, |s1,s2| Arc::new(Difference(s1,s2)))
                 } else if let Some(Value::Array(arr)) = region.get("intersection") {
-                    fold_array(arr, |s1,s2| Rc::new(Intersection(s1,s2)))
+                    fold_array(arr, |s1,s2| Arc::new(Intersection(s1,s2)))
                 } else if let Some(Value::Table(table)) = region.get("region") {
 
                     let reg = region.get("region").unwrap();
@@ -489,7 +567,7 @@ fn main() {
                             }
                         }
 
-                        Rc::new(Transformed(base,mat.into(),trans))
+                        Arc::new(Transformed(base,mat.into(),trans))
 
                     } else {
                         base
@@ -706,14 +784,14 @@ fn main() {
 
         let world = engine.get_component::<FluidSim>("world").unwrap();
 
-        let window1 = Rc::new(RefCell::new(window));
+        let window1 = Arc::new(RefCell::new(window));
         let window2 = window1.clone();
 
         let (mut x, mut y) = window1.borrow().get_cursor_pos();
         let (mut l_pressed, mut m_pressed, mut r_pressed) = (false, false, false);
         let (mut trans_x, mut trans_y) = (0.0,0.0);
         let mut scale = 1.0;
-        let mut rot = 0.0;
+        let mut rot = view_angle.to_radians();
 
         let mut pixels = if record {
             Some(vec![0u8; 3usize * win_w as usize * win_h as usize].into_boxed_slice())

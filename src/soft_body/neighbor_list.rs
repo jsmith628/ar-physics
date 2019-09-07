@@ -12,7 +12,7 @@ glsl! {$
             public struct Bucket {
                 uvec4 index;
                 uint count[3];
-                uint contents[8][32];
+                uint contents[4][32];
             };
 
             public struct Index {

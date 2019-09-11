@@ -144,7 +144,7 @@ glsl!{$
                 return (A + B * pow(strain, N)) * (1 + C * log(strain_rate));
             }
 
-            mat4 seth_hill(mat4 def, int two_m) {
+            mat4 seth_hill(in mat4 def, in int two_m) {
                 mat4 C = transpose(def)*def;
                 for(uint i=dim; i<4; i++) C[i][i] = 1.0;
 
@@ -167,15 +167,47 @@ glsl!{$
 
             }
 
-            public mat4 strain_measure(mat4 def) {
-                return seth_hill(def, 2);
-                // return 0.5*(def + transpose(def));
+            mat4 seth_hill_rate(in mat4 def, in mat4 def_rate, in int two_m) {
+                mat4 dC = transpose(def_rate) * def;
+                dC = (dC + transpose(dC));
+
+                mat4 C = transpose(def) * def;
+                for(uint i=dim; i<4; i++) C[i][i] = 1.0;
+
+                if(two_m == 0) {
+                    return 0.5 * dC * inverse(C);
+                } else {
+
+                    //TODO: derivative of square-root
+
+                    uint m = abs(two_m) >> 1;
+
+                    mat4 strain_rate = mat4(0);
+                    for(uint i=0; i<m; i++) {
+                        mat4 term = I;
+                        for(uint j=0; j<m; j++) {
+                            term *= j==i ? dC : C;
+                        }
+                        strain_rate += term;
+                    }
+
+                    strain_rate *= 1.0/two_m;
+
+                    if(two_m < 0) {
+                        mat4 inv_C = inverse(C);
+                        return -inv_C * strain_rate * inv_C;
+                    } else {
+                        return strain_rate;
+                    }
+                }
+
             }
 
-            public mat4 strain_rate(mat4 def, mat4 def_rate) {
-                mat4 d = transpose(def_rate) * def;
-                return 0.5 * (d + transpose(d));
-            }
+            mat4 strain_measure(mat4 def) { return seth_hill(def, 0); }
+            mat4 strain_measure(mat4 def, int order) { return seth_hill(def, order); }
+
+            mat4 strain_rate(mat4 def, mat4 def_rate) { return seth_hill_rate(def, def_rate, 0); }
+            mat4 strain_rate(mat4 def, mat4 def_rate, int order) { return seth_hill_rate(def, def_rate, order); }
 
             float eq_plastic_strain_sq(mat4 strain) {
                 mat4 dev = strain - trace(strain) * I / dim;
@@ -297,12 +329,13 @@ glsl!{$
                     float mu = materials[mat_id].shear_stiffness;
                     float norm_damp = materials[mat_id].normal_damp;
                     float shear_damp = materials[mat_id].shear_damp;
+                    int order = materials[mat_id].strain_order;
 
                     mat4 def = strains[s_id][1];
                     mat4 def_rate = strains[s_id][2];
                     // mat4 strain = particles[id].stress;
-                    mat4 strain = strain_measure(def) + solids[s_id].stress;
-                    mat4 rate_of_strain = strain_rate(def, def_rate);
+                    mat4 strain = strain_measure(def, order) + solids[s_id].stress;
+                    mat4 rate_of_strain = strain_rate(def, def_rate, order);
                     pk2_stress = hooke(strain, lambda, mu) + hooke(rate_of_strain, norm_damp, shear_damp);
                     mat4 stress = pk2_stress;
                     stress = def * transpose(stress);
@@ -325,8 +358,8 @@ glsl!{$
                             mat4 def2 = strains[s_id2][1];
                             mat4 def_rate2 = strains[s_id2][2];
                             // mat4 strain2 = particles[id2].stress;
-                            mat4 strain2 = strain_measure(def2) + solids[s_id2].stress;
-                            mat4 strain_rate2 = strain_rate(def2, def_rate2);
+                            mat4 strain2 = strain_measure(def2, order) + solids[s_id2].stress;
+                            mat4 strain_rate2 = strain_rate(def2, def_rate2, order);
                             mat4 stress2 = hooke(strain2, lambda, mu) + hooke(strain_rate2, norm_damp, shear_damp);
                             stress2 = def2 * transpose(stress2);
 
@@ -424,7 +457,7 @@ glsl!{$
                             vec4 r_inv = r / dot(r,r);
                             vec4 normal_force = r_inv * dot(contact_force, r);
                             vec4 tangent_vel = v - r_inv* dot(v, r);
-                            force += (f1 + f2) * length(normal_force) * normalize(tangent_vel);
+                            // force += (f1 + f2) * length(normal_force) * normalize(tangent_vel);
                         }
 
                     }

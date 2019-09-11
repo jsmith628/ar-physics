@@ -672,6 +672,7 @@ fn main() {
                         Some(s) => panic!("Invalid state equation: {}", s)
                     } as u32;
 
+                    mat.strain_order = as_int_or(&obj, "strain_order", 2) as i32;
                     mat.normal_stiffness = as_float_or(&obj, "normal_stiffness", 0.0) as f32;
                     mat.shear_stiffness = as_float_or(&obj, "shear_stiffness", 0.0) as f32;
                     mat.normal_damp = as_float_or(&obj, "normal_dampening", 0.0) as f32;

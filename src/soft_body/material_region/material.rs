@@ -18,6 +18,7 @@ glsl!{$
                 float sound_speed, target_den, visc;
 
                 //elastic properties
+                int strain_order;
                 float normal_stiffness, shear_stiffness, normal_damp, shear_damp;
 
                 //plastic properties
@@ -77,17 +78,18 @@ impl Material {
         mat
     }
 
-    pub fn new_elastic_solid(den: f32, stiffness: MatTensor, dampening: MatTensor) {
-        Self::new_solid(den, stiffness, dampening, None);
+    pub fn new_elastic_solid(den: f32, strain_order: GLint, stiffness: MatTensor, dampening: MatTensor) {
+        Self::new_solid(den, strain_order, stiffness, dampening, None);
     }
 
-    pub fn new_plastic_solid(den: f32, stiffness: MatTensor, dampening: MatTensor, strength: PlasticParams) {
-        Self::new_solid(den, stiffness, dampening, Some(strength));
+    pub fn new_plastic_solid(den: f32, strain_order: GLint, stiffness: MatTensor, dampening: MatTensor, strength: PlasticParams) {
+        Self::new_solid(den, strain_order, stiffness, dampening, Some(strength));
     }
 
-    pub fn new_solid(den: f32, stiffness: MatTensor, dampening: MatTensor, strength: Option<PlasticParams>) -> Self {
+    pub fn new_solid(den: f32, strain_order: GLint, stiffness: MatTensor, dampening: MatTensor, strength: Option<PlasticParams>) -> Self {
         let mut mat = Material::default();
         mat.start_den = den;
+        mat.strain_order = strain_order;
         mat.normal_stiffness = stiffness.normal;
         mat.shear_stiffness = stiffness.shear;
         mat.normal_damp = dampening.normal;

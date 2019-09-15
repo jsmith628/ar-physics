@@ -92,7 +92,7 @@ glsl!{$
                         if r > 0.0 {
                             let coeff = (0..4).fold(1.0, |prod, j| {
                                 if self.radii[j]>0.0 && j!=i {
-                                    prod * self.radii[i] as f64
+                                    prod * self.radii[j] as f64
                                 } else {
                                     prod
                                 }

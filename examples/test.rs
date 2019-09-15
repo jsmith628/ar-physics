@@ -455,8 +455,57 @@ fn main() {
                     iter.fold(first, f)
                 }
 
-                #[allow(unused_assignments)]
-                fn parse_region(region: &Table) -> Reg {
+                fn parse_region(table: &Table) -> Reg {
+
+                    let base = parse_base(table);
+                    let reg = Value::Table(table.clone());
+
+                    if table.get("translation").is_some() || table.get("scale").is_some() || table.get("rotation").is_some() {
+
+                        let trans = as_vec4_or(&reg, "translation", [0.0,0.0,0.0,0.0].into());
+
+                        let rot = match table.get("rotation") {
+                            Some(Value::Float(f)) => [0.0,0.0,1.0,*f as f32],
+                            _ => as_vec4_or(&reg, "rotation", [0.0,0.0,1.0,0.0].into()).value
+                        };
+
+                        let scale = match table.get("scale") {
+                            Some(Value::Float(f)) => [*f as f32;4],
+                            Some(Value::Array(arr)) => {
+                                let mut val = [1.0;4];
+                                for i in 0..(arr.len().min(4)) {val[i] = arr[i].as_float().unwrap() as f32;}
+                                val
+                            },
+                            _ => [1.0;4]
+                        };
+
+                        let c = rot[3].to_radians().cos();
+                        let s = rot[3].to_radians().sin();
+                        let u_l = (rot[0]*rot[0] + rot[1]*rot[1] + rot[2]*rot[2]).sqrt();
+                        let u = [rot[0]/u_l, rot[1]/u_l, rot[2]/u_l];
+
+                        let mut mat = [
+                            [c+u[0]*u[0]*(1.0-c), u[0]*u[1]*(1.0-c)+u[2]*s, u[0]*u[2]*(1.0-c)-u[1]*s, 0.0],
+                            [u[1]*u[2]*(1.0-c)-u[1]*s, c+u[1]*u[1]*(1.0-c), u[1]*u[2]*(1.0-c)+u[0]*s, 0.0],
+                            [u[0]*u[2]*(1.0-c)+u[1]*s, u[1]*u[2]*(1.0-c)-u[0]*s, c+u[2]*u[2]*(1.0-c), 0.0],
+                            [0.0,0.0,0.0,1.0]
+                        ];
+
+
+                        for i in 0..4 {
+                            for j in 0..4 {
+                                mat[i][j] *= scale[i];
+                            }
+                        }
+
+                        Arc::new(Transformed(base,mat.into(),trans))
+
+                    } else {
+                        base
+                    }
+                }
+
+                fn parse_base(region: &Table) -> Reg {
                     if let Some(Value::String(path)) = region.get("model") {
                         if let Some(border) = region.get("border").and_then(|b| b.as_float()) {
                             Arc::new(
@@ -525,54 +574,7 @@ fn main() {
                 } else if let Some(Value::Array(arr)) = region.get("intersection") {
                     fold_array(arr, |s1,s2| Arc::new(Intersection(s1,s2)))
                 } else if let Some(Value::Table(table)) = region.get("region") {
-
-                    let reg = region.get("region").unwrap();
-                    let base = parse_region(table);
-
-                    if table.get("translation").is_some() || table.get("scale").is_some() || table.get("rotation").is_some() {
-
-                        let trans = as_vec4_or(&reg, "translation", [0.0,0.0,0.0,0.0].into());
-
-                        let rot = match table.get("rotation") {
-                            Some(Value::Float(f)) => [0.0,0.0,1.0,*f as f32],
-                            _ => as_vec4_or(&reg, "rotation", [0.0,0.0,1.0,0.0].into()).value
-                        };
-
-                        let scale = match table.get("scale") {
-                            Some(Value::Float(f)) => [*f as f32;4],
-                            Some(Value::Array(arr)) => {
-                                let mut val = [1.0;4];
-                                for i in 0..(arr.len().min(4)) {val[i] = arr[i].as_float().unwrap() as f32;}
-                                val
-                            },
-                            _ => [1.0;4]
-                        };
-
-                        let c = rot[3].to_radians().cos();
-                        let s = rot[3].to_radians().sin();
-                        let u_l = (rot[0]*rot[0] + rot[1]*rot[1] + rot[2]*rot[2]).sqrt();
-                        let u = [rot[0]/u_l, rot[1]/u_l, rot[2]/u_l];
-
-                        let mut mat = [
-                            [c+u[0]*u[0]*(1.0-c), u[0]*u[1]*(1.0-c)+u[2]*s, u[0]*u[2]*(1.0-c)-u[1]*s, 0.0],
-                            [u[1]*u[2]*(1.0-c)-u[1]*s, c+u[1]*u[1]*(1.0-c), u[1]*u[2]*(1.0-c)+u[0]*s, 0.0],
-                            [u[0]*u[2]*(1.0-c)+u[1]*s, u[1]*u[2]*(1.0-c)-u[0]*s, c+u[2]*u[2]*(1.0-c), 0.0],
-                            [0.0,0.0,0.0,1.0]
-                        ];
-
-
-                        for i in 0..4 {
-                            for j in 0..4 {
-                                mat[i][j] *= scale[i];
-                            }
-                        }
-
-                        Arc::new(Transformed(base,mat.into(),trans))
-
-                    } else {
-                        base
-                    }
-
+                    parse_region(table)
                 } else {
                     panic!("Material has no table named region or doesn't have union, difference, or intersection arrays");
                 }

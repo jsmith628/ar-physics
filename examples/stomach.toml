@@ -1,0 +1,54 @@
+
+name = "Stomach"
+lighting = false
+particle_render_factor = 1.0
+kernel_radius = 0.015
+view_angle = 90.0
+gravity = 5.0
+time_step = 0.001
+subticks = 10
+# subticks = 1
+artificial_viscocity = 0.0
+integrator = "RK4"
+# integrator = "Verlet"
+
+min = [-0.2,-0.6,-0.4]
+dim = [0.4,1.5,0.8]
+
+[objects.stomach]
+  packing = 0.5
+  density = 1.0
+  normal_stiffness = -3000000.0
+  shear_stiffness = -300000000.0
+  shear_dampening = -5000.0
+  color = [0.0,1.0,0.0,0.1]
+  union = [
+    {border=0.1, translation = [0.0,0.1,0.0], scale = [0.04,0.04,0.04], model = "examples/models/stomach surface.stl"},
+    {center = [-0.0,0.4,-0.15], dim = [0.15,0.02,0.15]},
+    {center = [-0.0,-0.12,0.17], dim = [0.15,0.12,0.02]}
+  ]
+
+[objects.fluid]
+  packing = 0.5
+  speed_of_sound = 3000.0
+  viscocity = 0.0
+  bulk_viscocity = 500.0
+  color = [0.0,0.0,1.0,0.1]
+  density = 1.0
+  region = {center = [-0.0,0.1,0.1], dim = [0.07,0.07,0.07]}
+
+[boundaries.pin]
+  stomach = {friction = 1.0}
+  color = [0.0,0.0,0.0,0.0]
+  difference = [
+    {center = [-0.0,0.375,-0.15], dim = [0.15,0.01,0.15]},
+    {center = [-0.0,0.375,-0.15], radii = [0.04,0.5,0.04]}
+  ]
+
+[boundaries.pin2]
+  stomach = {friction = 1.0}
+  color = [0.0,0.0,0.0,0.0]
+  difference = [
+    {center = [-0.0,-0.12,0.145], dim = [0.15,0.12,0.007]},
+    {center = [-0.0,-0.12,0.145], radii = [0.04,0.04,0.5]}
+  ]

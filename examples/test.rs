@@ -658,6 +658,7 @@ fn main() {
                     mat.target_den = as_float_or(&obj, "target_density", as_float_or(&obj, "density", 1.0)) as f32;
                     mat.sound_speed = as_float_or(&obj, "speed_of_sound", 0.0) as f32;
                     mat.visc = as_float_or(&obj, "viscocity", as_float_or(&obj, "friction", 0.0)) as f32;
+                    mat.bulk_visc = as_float_or(&obj, "bulk_viscocity", (alpha*h*mat.sound_speed) as f64) as f32;
                     mat.state_eq = match table.get("state").or(table.get("state_equation")).map(|a| a.as_str().unwrap()) {
                         None => if table.get("speed_of_sound").is_some() {
                             if table.get("start_density").is_some() || table.get("target_density").is_some() {

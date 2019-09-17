@@ -123,6 +123,7 @@ glsl!{$
                     uint state_eq = materials[mat_id].state_eq;
                     float c1 = materials[mat_id].sound_speed;
                     float f1 = materials[mat_id].visc;
+                    float bf1 = materials[mat_id].bulk_visc;
                     float d0 = materials[mat_id].target_den;
                     float p1 = pressure(state_eq, d1, 0, c1, d0);
 
@@ -143,6 +144,7 @@ glsl!{$
                         uint state_eq2 = materials[mat_2].state_eq;
                         float m2 = materials[mat_2].mass;
                         float f2 = materials[mat_2].visc;
+                        float bf2 = materials[mat_2].bulk_visc;
                         float c2 = materials[mat_2].sound_speed;
 
                         vec4 r,v;
@@ -206,7 +208,7 @@ glsl!{$
 
                         //artificial viscocity
                         if(j>=bc) force -= m1*m2*(
-                            (f*h*(c1+c2))*dot(v, r) / ((d1+d2)*(dot(r,r)+EPSILON*h*h))
+                            (bf1+bf2)*dot(v, r) / ((d1+d2)*(dot(r,r)+EPSILON*h*h))
                         )*grad_w(r, h, norm_const);
 
                     }

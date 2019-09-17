@@ -15,7 +15,7 @@ glsl!{$
 
                 //fluid properties
                 uint state_eq;
-                float sound_speed, target_den, visc;
+                float sound_speed, target_den, visc, bulk_visc;
 
                 //elastic properties
                 int strain_order;
@@ -61,19 +61,20 @@ pub enum StateEquation {
 impl Material {
 
     pub fn new_liquid(den: f32, sound_speed: f32, visc: f32) -> Self {
-        Self::new_fluid(den, den, sound_speed, visc, StateEquation::Tait)
+        Self::new_fluid(den, den, sound_speed, visc, 0.0, StateEquation::Tait)
     }
 
-    pub fn new_gas(start_den: f32, target_den: f32, sound_speed: f32, visc: f32) -> Self {
-        Self::new_fluid(start_den, target_den, sound_speed, visc, StateEquation::IdealGas)
+    pub fn new_gas(start_den: f32, target_den: f32, sound_speed: f32, visc: f32, bulk_visc: f32) -> Self {
+        Self::new_fluid(start_den, target_den, sound_speed, visc, bulk_visc, StateEquation::IdealGas)
     }
 
-    pub fn new_fluid(start_den: f32, target_den: f32, sound_speed: f32, visc: f32, state: StateEquation) -> Self {
+    pub fn new_fluid(start_den: f32, target_den: f32, sound_speed: f32, visc: f32, bulk_visc: f32, state: StateEquation) -> Self {
         let mut mat = Material::default();
         mat.start_den = start_den;
         mat.target_den = target_den;
         mat.sound_speed = sound_speed;
         mat.visc = visc;
+        mat.bulk_visc = bulk_visc;
         mat.state_eq = state as GLuint;
         mat
     }

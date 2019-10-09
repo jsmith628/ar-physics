@@ -133,7 +133,7 @@ impl<R:Region> Transformed<R> {
 
 impl<R:Region> Region for Transformed<R> {
     fn bound(&self) -> AABB{
-        let mut bound = self.0.bound();
+        let bound = self.0.bound();
         let mut min = self.2;
         let mut max = self.2;
         for i in 0..4 {

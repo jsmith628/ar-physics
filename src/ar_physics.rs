@@ -1,9 +1,9 @@
 #![recursion_limit="65536"]
-#![feature(weak_ptr_eq)]
 #![feature(trivial_bounds)]
 #![feature(allocator_api)]
 #![feature(non_exhaustive)]
 #![feature(wait_until)]
+#![feature(maybe_uninit_ref)]
 
 
 #[macro_use] extern crate macro_program;

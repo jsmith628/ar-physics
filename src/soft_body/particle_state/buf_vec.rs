@@ -1,6 +1,6 @@
 use gl_struct::*;
 
-use std::mem::{swap, forget, uninitialized};
+use std::mem::{swap, forget, MaybeUninit};
 use std::ptr::copy_nonoverlapping;
 
 pub struct BufVec<T:GPUCopy> {
@@ -46,10 +46,10 @@ impl<T:GPUCopy> BufVec<T> {
     pub fn pop(&mut self) -> Option<T> {
         if self.len() > 0 {
             unsafe {
-                let mut item = uninitialized();
-                copy_nonoverlapping(&self.buf.map()[self.len-1], &mut item, 1);
+                let mut item = MaybeUninit::uninit();
+                copy_nonoverlapping(&self.buf.map()[self.len-1], item.get_mut(), 1);
                 self.len -= 1;
-                Some(item)
+                Some(item.assume_init())
             }
         } else {
             None

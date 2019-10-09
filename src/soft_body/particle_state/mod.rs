@@ -43,7 +43,6 @@ glsl!{$
                 }
 
                 pub fn with_pos_vel(pos: vec4, vel: vec4) -> Self {
-                    let k = 0.0;
                     Particle {
                         den: 0.0,
                         mat: 0, solid_id: !0,

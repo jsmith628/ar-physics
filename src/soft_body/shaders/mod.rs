@@ -57,7 +57,7 @@ pub fn compute_forces(
 
                 let ub_s = ::std::mem::transmute::<&SolidParticleBuffer,&mut SolidParticleBuffer>(&*solids);
                 strain.compute(strains.len() as u32, 1, 1, ub, ub_s, ub_mat, indices, &mut strains, buckets);
-                let (mut dest_p, mut dest_s) = dest2.all_particles_mut();
+                let (dest_p, dest_s) = dest2.all_particles_mut();
 
                 solid_force.compute(
                     p.particles().len() as u32, 1, 1,

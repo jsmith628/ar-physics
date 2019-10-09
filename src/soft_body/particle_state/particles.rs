@@ -546,7 +546,6 @@ impl Particles {
                 self.materials().len()
             } else {
                 let mut i = 0;
-                let len = self.materials().len();
                 for mat in self.materials().map().iter() {
                     if material == *mat {
                         break;
@@ -604,7 +603,6 @@ impl Particles {
         }
 
         unsafe {
-            use gl_struct::gl;
 
             //add the solid particles to the buffer
             if material.is_solid() {

@@ -118,7 +118,8 @@ impl MaterialRegion {
             if pos[2] - bound.min[2] > bound.dim[2] || bound.dim[2]==0.0 { break };
         }
 
-        threads.1.wait_until(threads.0.lock().unwrap(), |count| *count<=0).unwrap();
+        let lock = threads.1.wait_until(threads.0.lock().unwrap(), |count| *count<=0).unwrap();
+        drop(lock);
 
         let mut list = Arc::try_unwrap(list_lock).unwrap().into_inner().unwrap();
         list.shrink_to_fit();

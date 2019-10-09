@@ -337,6 +337,12 @@ fn as_string_or(val: &Value, name: &str, def: String) -> String {
     val.as_table().unwrap().get(name).map(|v| v.as_str().unwrap().to_owned()).unwrap_or(def)
 }
 
+fn as_float_vec_or(val: &Value, name: &str, def: Vec<f64>) -> Vec<f64> {
+    val.as_table().unwrap().get(name).map(
+        |v| v.as_array().unwrap().iter().map(|f| f.as_float().unwrap()).collect()
+    ).unwrap_or(def)
+}
+
 fn as_vec4_or(val: &Value, name: &str, def: vec4) -> vec4 {
     val.as_table().unwrap().get(name).map(|v| to_vec4(&v.as_array().unwrap())).unwrap_or(def)
 }
@@ -403,7 +409,6 @@ fn main() {
 
         let title = as_str_or(&config, "name", "Fluid Test");
         let lighting = as_bool_or(&config, "lighting", config.as_table().unwrap().get("light_pos").is_some());
-        let view_angle = as_float_or(&config, "view_angle", 0.0);
 
         let subticks = as_int_or(&config, "subticks", 1) as u32;
         let h = as_float_or(&config, "kernel_radius", 1.0/64.0) as f32;
@@ -791,11 +796,13 @@ fn main() {
         let window1 = Arc::new(RefCell::new(window));
         let window2 = window1.clone();
 
+        let camera_pos = as_float_vec_or(&config, "view_pos", vec![0.0,0.0]);
+        let mut scale = as_float_or(&config, "view_scale", 1.0);
+        let mut rot = as_float_or(&config, "view_angle", 0.0).to_radians();
+
         let (mut x, mut y) = window1.borrow().get_cursor_pos();
         let (mut l_pressed, mut m_pressed, mut r_pressed) = (false, false, false);
-        let (mut trans_x, mut trans_y) = (0.0,0.0);
-        let mut scale = 1.0;
-        let mut rot = view_angle.to_radians();
+        let (mut trans_x, mut trans_y) = (-camera_pos[0],-camera_pos[1]);
 
         let mut pixels = if record {
             Some(vec![0u8; 3usize * win_w as usize * win_h as usize].into_boxed_slice())

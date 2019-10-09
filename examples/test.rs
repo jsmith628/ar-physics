@@ -18,8 +18,6 @@ use std::cell::RefCell;
 use gl_struct::*;
 use gl_struct::glsl_type::{vec4, vec3};
 
-use rayon::prelude::*;
-
 use toml::Value;
 
 use stl_io::*;
@@ -203,7 +201,7 @@ impl Region for Mesh {
         if p.value[3] != 0.0 { return false; }
 
         //because we don't actually have a good dot product operation
-        fn dot(v1:&[f32], v2: &[f32]) -> f32 { v1[0]*v2[0] + v1[1]*v2[1] }
+        // fn dot(v1:&[f32], v2: &[f32]) -> f32 { v1[0]*v2[0] + v1[1]*v2[1] }
 
         self.mesh.faces.iter().map(
             |f| [
@@ -232,7 +230,7 @@ impl Region for Mesh {
                         [p.value[0]-a[0],p.value[1]-a[1]]
                     );
 
-                    let mut a = (s1[0]*s2[1] - s1[1]*s2[0]);
+                    let mut a = s1[0]*s2[1] - s1[1]*s2[0];
                     let s = a.signum() * (d[0]*s2[1] - d[1]*s2[0]);
                     let t = a.signum() * (s1[0]*d[1] - s1[1]*d[0]);
                     a = a.abs();
@@ -333,9 +331,9 @@ fn as_str_or<'a>(val: &'a Value, name: &str, def: &'a str) -> &'a str {
     val.as_table().unwrap().get(name).map(|v| v.as_str().unwrap()).unwrap_or(def)
 }
 
-fn as_string_or(val: &Value, name: &str, def: String) -> String {
-    val.as_table().unwrap().get(name).map(|v| v.as_str().unwrap().to_owned()).unwrap_or(def)
-}
+// fn as_string_or(val: &Value, name: &str, def: String) -> String {
+//     val.as_table().unwrap().get(name).map(|v| v.as_str().unwrap().to_owned()).unwrap_or(def)
+// }
 
 fn as_float_vec_or(val: &Value, name: &str, def: Vec<f64>) -> Vec<f64> {
     val.as_table().unwrap().get(name).map(
@@ -523,9 +521,9 @@ fn main() {
                             Arc::new(Mesh{mesh:read_stl(&mut File::open(path).unwrap()).unwrap()})
                         }
                     } else {
-                        let mut boxed = true;
+                        let boxed;
+                        let mut dim;
                         let mut min = [0.0,0.0,0.0,0.0].into();
-                        let mut dim = [0.0,0.0,0.0,0.0].into();
                         let border = region.get("border").map(|f| f.as_float().unwrap() as f32);
 
                         if let Some(Value::Array(arr)) = region.get("dim") {
@@ -797,7 +795,7 @@ fn main() {
         let window2 = window1.clone();
 
         let camera_pos = as_float_vec_or(&config, "view_pos", vec![0.0,0.0]);
-        let mut scale = as_float_or(&config, "view_scale", 1.0);
+        let scale = as_float_or(&config, "view_scale", 1.0);
         let mut rot = as_float_or(&config, "view_angle", 0.0).to_radians();
 
         let (mut x, mut y) = window1.borrow().get_cursor_pos();
@@ -817,7 +815,7 @@ fn main() {
                 let s = width.min(height);
                 unsafe {gl::Viewport((width-s)/2, (height-s)/2, s, s)};
 
-                if let Some(mut pixels) = pixels.as_mut() {
+                if let Some(pixels) = pixels.as_mut() {
                     use std::io::Write;
 
                     unsafe {

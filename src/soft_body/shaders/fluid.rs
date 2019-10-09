@@ -205,12 +205,13 @@ glsl!{$
                         if(!elastic && j>=bc) force -= m1*m2*(f1+f2)*dot(r,grad_w(r, h, norm_const))*v/(d1*d2*(dot(r,r)+EPSILON*h*h));
 
 
-
                         //artificial viscocity
-                        if(j>=bc) force -= m1*m2*(
-                            (bf1+bf2)*dot(v, r) / ((d1+d2)*(dot(r,r)+EPSILON*h*h))
-                        )*grad_w(r, h, norm_const);
-
+                        if(j>=bc) {
+                            float _f = mat_id==mat_2 ? bf1+bf2 : inter.dampening;
+                            force -= m1*m2*(
+                                (_f)*dot(v, r) / ((d1+d2)*(dot(r,r)+EPSILON*h*h))
+                            )*grad_w(r, h, norm_const);
+                        }
                     }
 
                 }

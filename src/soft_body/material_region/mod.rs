@@ -47,54 +47,52 @@ impl MaterialRegion {
         h = self.packing_coefficient * h;
 
         let bound = self.region.bound();
-        let list = Vec::with_capacity((0..4).fold(1, |c, i| c*(1.0f32.max(bound.dim[i]/h) as usize)));
 
-        // println!("{:?}", bound);
 
         let mut num_in_box = 0u64;
         let mut pos = bound.min;
         let start_density = self.mat.start_den;
 
         use std::thread::*;
-        use std::sync::*;
 
-        let threads = Arc::new((Mutex::new(0), Condvar::new()));
-        let list_lock = Arc::new(Mutex::new(list));
+        //the max number of particles to test in each thread
+        const JOB_SIZE:usize = 8192;
 
-        const JOB_SIZE:usize = 16;
+        //the particle testing threads
+        let mut threads = Vec::<JoinHandle<Vec<Particle>>>::new();
+
+        //the list accumulating positions to test in the next job
         let mut particles_to_test = Vec::<(vec4, vec4)>::with_capacity(JOB_SIZE);
 
-        let dispatch_job: &mut dyn FnMut(&mut Vec::<(vec4, vec4)>) = &mut |p_to_test| {
-            *(threads.1.wait_until(
-                threads.0.lock().unwrap(), |count| *count<12
-            ).unwrap()) += 1;
+        //the closure the spawns a new thread for particle testing
+        let dispatch: &mut dyn FnMut(&mut Vec::<(vec4, vec4)>) -> JoinHandle<Vec<Particle>> = &mut |p_to_test| {
 
             let region = self.region.clone();
-            let list_arc = list_lock.clone();
-            let thread_arc = threads.clone();
 
             let mut particles = Vec::with_capacity(JOB_SIZE);
             ::std::mem::swap(p_to_test, &mut particles);
 
             spawn(
                 move || {
+                    let mut p_to_add = Vec::with_capacity(particles.len());
+
                     for p in particles {
                         if region.contains(p.0) {
                             let mut particle = Particle::with_pos(p.0);
                             particle.vel = p.1;
                             particle.den = start_density;
                             particle.mat = mat_id;
-                            list_arc.lock().unwrap().push(particle);
+                            p_to_add.push(particle);
                         }
                     }
 
-                    drop(list_arc);
-                    *thread_arc.0.lock().unwrap() -= 1;
-                    thread_arc.1.notify_all();
+                    return p_to_add;
                 }
-            );
+            )
         };
 
+
+        //loop over every spot in the bound that could house a particle
         let mut offset2 = 0.0;
         loop {
             let mut offset = 0.0;
@@ -103,7 +101,9 @@ impl MaterialRegion {
                 pos[0] = bound.min[0]+(offset+offset2);
                 loop {
 
-                    if particles_to_test.len() >= JOB_SIZE { dispatch_job(&mut particles_to_test); }
+                    if particles_to_test.len() >= JOB_SIZE {
+                        threads.push(dispatch(&mut particles_to_test));
+                    }
 
                     num_in_box += 1;
                     particles_to_test.push((pos.into(), (self.vel)(pos.into())));
@@ -120,13 +120,15 @@ impl MaterialRegion {
             if pos[2] - bound.min[2] > bound.dim[2] || bound.dim[2]==0.0 { break };
         }
 
-        if particles_to_test.len() > 0 { dispatch_job(&mut particles_to_test); }
+        if particles_to_test.len() > 0 { threads.push(dispatch(&mut particles_to_test)); }
 
-        let lock = threads.1.wait_until(threads.0.lock().unwrap(), |count| *count<=0).unwrap();
-        drop(lock);
+        //join all of the threads into one list of particles
+        let list_of_lists = threads.into_iter().map(|t| t.join().unwrap()).collect::<Vec<_>>();
+        let mut list = list_of_lists.into_iter().flatten().collect::<Vec<_>>();
 
-        let mut list = Arc::try_unwrap(list_lock).unwrap().into_inner().unwrap();
         list.shrink_to_fit();
+
+        //compute the mass of the particles
 
         let box_mass = start_density as f64 * (0..4).fold(1.0,
             |content, i| (if bound.dim[i]>0.0 {content * bound.dim[i] as f64} else {content})

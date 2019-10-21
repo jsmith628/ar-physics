@@ -1,3 +1,4 @@
+#![feature(maybe_uninit_ref)]
 #![recursion_limit="2048"]
 
 #[macro_use]
@@ -16,6 +17,7 @@ use std::sync::Arc;
 use std::cell::RefCell;
 
 use gl_struct::*;
+use gl::types::*;
 use gl_struct::glsl_type::{vec4, vec3};
 
 use toml::Value;
@@ -23,6 +25,7 @@ use toml::Value;
 use stl_io::*;
 
 use std::io::*;
+use std::mem::*;
 use std::io::Read;
 use std::fs::File;
 use std::collections::HashMap;
@@ -104,7 +107,7 @@ glsl!{$
             }
 
         @Fragment
-            #version 140
+            #version 460
 
             extern float normalization_constant(int n, float h);
             extern float kernel(vec4 r, float h, float k);
@@ -122,6 +125,8 @@ glsl!{$
             in vec3 part_pos;
             in vec3 look_basis[3];
             in float depth;
+
+            layout(location = 0, index = 0) out vec4 output_color;
 
             void main() {
                 const float s = 2;
@@ -146,18 +151,18 @@ glsl!{$
                         float spec = max(20*dot(-look_basis[2], reflect(light_vec, normal)),0);
                         spec *= spec * spec;
 
-                        gl_FragColor.rgb = frag_color.rgb*ambient_brightness;
-                        gl_FragColor.rgb += diffuse*diffuse_brightness*light_color;
+                        output_color.rgb = frag_color.rgb*ambient_brightness;
+                        output_color.rgb += diffuse*diffuse_brightness*light_color;
                         // gl_FragColor.rgb = mix(
                         //     ,
                         //     diffuse_color,
                         //     max(diffuse*diffuse_brightness,0)
                         // );
-                        gl_FragColor.rgb += light_color * spec * specular_brightness;
-                        gl_FragColor.a = 1.0;
+                        output_color.rgb += light_color * spec * specular_brightness;
+                        output_color.a = 1.0;
                     } else {
                         float k = normalization_constant(3, 3);
-                        gl_FragColor = vec4(
+                        output_color = vec4(
                             frag_color.rgb,
                             frag_color.a * kernel(vec4(d,0,0), 1.0, k)/kernel(vec4(0,0,0,0), 1.0, k)
                         );
@@ -357,10 +362,11 @@ fn as_vec3_or(val: &Value, name: &str, def: vec3) -> vec3 {
 fn main() {
 
     //parse cli arguments
-    enum ParserState { Default, Width, Height, FPS, TPS }
+    enum ParserState { Default, Width, Height, RecordWidth, RecordHeight, FPS, TPS }
 
     let mut config_loc = None;
     let (mut win_w, mut win_h) = (640*3/2, 480*3/2);
+    let (mut rec_w, mut rec_h) = (None, None);
     let (mut fps, mut tps) = (75.0, 75.0);
     let mut record = false;
 
@@ -373,6 +379,8 @@ fn main() {
         match state {
             ParserState::Width => win_w = arg.parse::<u32>().unwrap(),
             ParserState::Height => win_h = arg.parse::<u32>().unwrap(),
+            ParserState::RecordWidth => rec_w = arg.parse::<u32>().ok(),
+            ParserState::RecordHeight => rec_h = arg.parse::<u32>().ok(),
             ParserState::FPS => fps = arg.parse::<f64>().unwrap(),
             ParserState::TPS => tps = arg.parse::<f64>().unwrap(),
 
@@ -381,6 +389,8 @@ fn main() {
                 match arg.as_str() {
                     "-w"|"--width" => state = ParserState::Width,
                     "-h"|"--height" => state = ParserState::Height,
+                    "-rw"|"--record-width" => state = ParserState::RecordWidth,
+                    "-rh"|"--record-height" => state = ParserState::RecordHeight,
                     "-f"|"--fps" => state = ParserState::FPS,
                     "-t"|"--tps" => state = ParserState::TPS,
                     "-r"|"--record" => record = true,
@@ -392,6 +402,9 @@ fn main() {
         if reset {state = ParserState::Default;}
 
     }
+
+    let rec_w = rec_w.unwrap_or(win_w);
+    let rec_h = rec_h.unwrap_or(win_h);
 
     if let Some(path) = config_loc {
 
@@ -803,42 +816,80 @@ fn main() {
         let (mut trans_x, mut trans_y) = (-camera_pos[0],-camera_pos[1]);
 
         let mut pixels = if record {
-            Some(vec![0u8; 3usize * win_w as usize * win_h as usize].into_boxed_slice())
+            Some(vec![0u8; 3usize * rec_w as usize * rec_h as usize].into_boxed_slice())
         } else {None};
+
+        let [color,depth] = unsafe {
+            let mut rb = MaybeUninit::<[GLuint;2]>::uninit();
+            gl::GenRenderbuffers(2, &mut rb.get_mut()[0] as *mut GLuint);
+            rb.assume_init()
+        };
+
+        let fb = unsafe {
+            let mut fb = MaybeUninit::uninit();
+            gl::GenFramebuffers(1, fb.get_mut());
+            fb.assume_init()
+        };
+
+        println!("{} {} {}", fb, color, depth);
+
+        unsafe {
+            gl::BindFramebuffer(gl::FRAMEBUFFER, fb);
+
+            gl::BindRenderbuffer(gl::RENDERBUFFER, color);
+            gl::RenderbufferStorage(gl::RENDERBUFFER, gl::RGBA8, rec_w as GLint, rec_h as GLint);
+            gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::RENDERBUFFER, color);
+
+            gl::BindRenderbuffer(gl::RENDERBUFFER, depth);
+            gl::RenderbufferStorage(gl::RENDERBUFFER, gl::DEPTH24_STENCIL8, rec_w as GLint, rec_h as GLint);
+            gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::DEPTH_STENCIL_ATTACHMENT, gl::RENDERBUFFER, depth);
+
+            gl::BindRenderbuffer(gl::RENDERBUFFER, 0);
+
+            let status = gl::CheckFramebufferStatus(gl::FRAMEBUFFER);
+            match status {
+                gl::FRAMEBUFFER_UNDEFINED => panic!("framebuffer undefined"),
+                gl::FRAMEBUFFER_INCOMPLETE_ATTACHMENT => panic!("framebuffer incomplete attachment"),
+                gl::FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT => panic!("framebuffer incomplete missing attachment"),
+                gl::FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER => panic!("framebuffer incomplete draw buffer"),
+                gl::FRAMEBUFFER_INCOMPLETE_READ_BUFFER => panic!("framebuffer incomplete read buffer"),
+                gl::FRAMEBUFFER_UNSUPPORTED => panic!("framebuffer unsupported"),
+                gl::FRAMEBUFFER_INCOMPLETE_MULTISAMPLE => panic!("framebuffer incomplete multisample"),
+                gl::FRAMEBUFFER_INCOMPLETE_LAYER_TARGETS => panic!("framebuffer incomplete layer targets"),
+                _ => if status != gl::FRAMEBUFFER_COMPLETE { panic!("framebuffer no compete :("); } else {}
+            };
+
+
+
+        }
+
+
 
         engine.add_component_from_fn(
             "renderer",
             if fps < 0.0 {ConstantTimer::new_uncapped()} else {ConstantTimer::from_tps(fps)},
             move || {
 
-                let (width, height) = window1.borrow().get_framebuffer_size();
-                let s = width.min(height);
-                unsafe {gl::Viewport((width-s)/2, (height-s)/2, s, s)};
-
                 if let Some(pixels) = pixels.as_mut() {
                     use std::io::Write;
 
                     unsafe {
+
+                        gl::BindFramebuffer(gl::READ_FRAMEBUFFER, fb);
+                        gl::ReadBuffer(gl::COLOR_ATTACHMENT0);
+
                         gl::ReadPixels(
                             0,0,
-                            win_w as gl::types::GLsizei,win_h as gl::types::GLsizei,
+                            rec_w as GLsizei, rec_h as GLsizei,
                             gl::RGB,gl::UNSIGNED_BYTE,
                             &mut pixels[0] as *mut u8 as *mut gl::types::GLvoid
                         );
-                    }
 
-                    // for pixel in pixels.chunks(3) {
-                    //     print!("{:?} ", pixel);
-                    // }
-                    // println!();
+                    }
 
                     std::io::stdout().write(&**pixels).unwrap();
 
                 }
-
-
-                glfw::Context::swap_buffers(&mut *window1.borrow_mut());
-                glfw.poll_events();
 
                 let mut w = world.borrow_mut();
 
@@ -907,30 +958,55 @@ fn main() {
                     }
                 }
 
-                unsafe {
-                    gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
-                    gl::ClearColor(1.0,1.0,1.0,0.0);
-                    gl::PointSize(s as f32 * *shader.render_h * 1.0);
-                }
-
-                // println!("{:?}",
-                //     w.particles().buf
-                //         .read_into_box()
-                //         .into_iter()
-                //         .map(|p| p.strain)
-                //         .filter(|s| s.value.iter().flatten().fold(false, |b,n| b || *n!=0.0))
-                //         .collect::<Vec<_>>()
-                // );
-
                 let particles = w.particles().particles();
 
                 let n = w.particles().particles().len();
                 let m = w.particles().boundary().len();
-                let (den, mat,_, pos, vel) = Particle::get_attributes(&w.particles().boundary());
-                shader.draw(&mut context, DrawMode::Points, m, den, mat, pos, pos, vel);
+                let (den1, mat1,_, pos1, vel1) = Particle::get_attributes(&w.particles().boundary());
+                let (den2, mat2,_, pos2, vel2) = Particle::get_attributes(&*particles);
 
-                let (den, mat,_, pos, vel) = Particle::get_attributes(&*particles);
-                shader.draw(&mut context, DrawMode::Points, n, den, mat, pos, pos, vel);
+                let (width, height) = window1.borrow().get_framebuffer_size();
+                let s = width.min(height);
+
+                if pixels.is_some() {
+                    unsafe {
+                        const BUFFERS: [GLenum; 1] = [gl::COLOR_ATTACHMENT0];
+                        const CLEAR_COLOR: [GLfloat; 4] = [1.0,0.0,1.0,0.0];
+                        gl::BindFramebuffer(gl::FRAMEBUFFER, fb);
+                        gl::DrawBuffers(1, &BUFFERS[0] as *const GLenum);
+
+                        let s2 = rec_w.min(rec_h);
+                        gl::PointSize(s2 as f32 * *shader.render_h);
+                        gl::Viewport(((rec_w-s2)/2) as GLint, ((rec_h-s2)/2) as GLint, s2 as GLint, s2 as GLint);
+
+                        gl::ClearBufferfi(gl::DEPTH_STENCIL, 0, 1.0, 0);
+                        gl::ClearBufferfv(gl::COLOR, 0, &CLEAR_COLOR[0] as *const GLfloat);
+
+                        gl::ClearColor(1.0,1.0,1.0,0.0);
+                        gl::ClearDepth(1.0);
+                        gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+
+                    }
+
+                    shader.draw(&mut context, DrawMode::Points, m, den1, mat1, pos1, pos1, vel1);
+                    shader.draw(&mut context, DrawMode::Points, n, den2, mat2, pos2, pos2, vel2);
+                }
+
+                unsafe {
+                    gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+                    gl::DrawBuffer(gl::BACK);
+                    gl::ClearColor(1.0,1.0,1.0,0.0);
+                    gl::ClearDepth(1.0);
+                    gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+                    gl::PointSize(s as f32 * *shader.render_h);
+                    gl::Viewport((width-s)/2, (height-s)/2, s, s);
+                }
+
+                shader.draw(&mut context, DrawMode::Points, m, den1, mat1, pos1, pos1, vel1);
+                shader.draw(&mut context, DrawMode::Points, n, den2, mat2, pos2, pos2, vel2);
+
+                glfw::Context::swap_buffers(&mut *window1.borrow_mut());
+                glfw.poll_events();
 
             }
         );
@@ -940,6 +1016,7 @@ fn main() {
         unsafe {
             gl::Viewport(80*2,0,win_h as i32,win_h as i32);
             gl::Disable(gl::CULL_FACE);
+            gl::Disable(gl::RASTERIZER_DISCARD);
 
             gl::Enable(0x8861);
             gl::Enable(gl::BLEND);

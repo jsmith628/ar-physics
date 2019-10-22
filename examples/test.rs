@@ -88,7 +88,7 @@ glsl!{$
                     frag_color = mix(c2[mat], c3[mat], d/5);
                 }
 
-                // frag_color.a = 1;
+                frag_color.a = min(1.0, frag_color.a);
 
                 part_pos = pos.xyz;
 
@@ -741,7 +741,10 @@ fn main() {
                         list.push(mat_region);
                         names.push(name.as_str());
                         get_interactions(name.as_str(), &obj, h as f64, &mut interaction_map);
-                        set_colors_and_den(&obj, &mut shader, mat_number, mat.target_den);
+                        set_colors_and_den(
+                            &obj, &mut shader, mat_number,
+                            if mat.state_eq==StateEquation::IdealGas as u32 {mat.start_den} else {mat.target_den}
+                        );
                         mat_number += 1;
                     } else {
                         let relative = table.get("on_click").unwrap().as_str().unwrap() == "Relative";

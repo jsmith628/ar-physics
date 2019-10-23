@@ -5,33 +5,35 @@ particle_render_factor = 0.8
 kernel_radius = 0.025
 gravity = 5.0
 time_step = 0.001
-subticks = 3
+subticks = 5
 artificial_viscocity = 0.0
 integrator = "Verlet"
 
-min = [-0.3,-1.0,-0.5]
-dim = [0.6,2.0,1.0]
+min = [-0.3,-0.5,-0.5]
+dim = [0.6,1.0,1.0]
 
 [objects.ball]
-  packing = 0.7
+  packing = 0.5
   density = 1.0
-  normal_stiffness = -100000.0
-  shear_stiffness = -600000.0
-  shear_dampening = -10000.0
+  normal_stiffness = -1000.0
+  shear_stiffness = -10000000.0
+  normal_dampening = -10000.0
   color = [0.0,0.0,1.0,1.0]
   # color_high_density = [1.0,0.0,0.0,0.1]
   # color_low_density = [0.0,1.0,0.0,0.1]
-  region = {center = [-0.0,-0.25,-0.2], dim = [0.25,0.02,0.25]}
+  region = {center = [-0.0,-0.25,-0.2], dim = [0.3,0.005,0.3]}
+  floor = { potential = "linear", contact_strength = 10000.0 , friction = 0.5}
+  circle = { potential = "linear", contact_strength = 10000.0 , friction = 0.5}
 
 
-[boundaries.floor]
-  packing = 0.5
-  friction = 0.0
-  color = [0.0,0.0,0.0,0.01]
-  region = {min = [-0.2,-0.8,-0.4], dim = [0.4,0.06,0.4]}
+# [boundaries.floor]
+#   packing = 0.5
+#   friction = 0.0
+#   color = [0.0,0.0,0.0,0.01]
+#   region = {min = [-0.2,-0.8,-0.4], dim = [0.4,0.06,0.4]}
 
 [boundaries.circle]
   packing = 0.5
   friction = 0.0
   color = [0.0,0.0,0.0,0.05]
-  region = {center = [0.05,-0.35,-0.2], diameters = [0.06,0.06,0.06]}
+  region = {center = [0.0,-0.4,-0.2], diameters = [0.09,0.19,0.09]}

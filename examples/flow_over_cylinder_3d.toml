@@ -1,11 +1,13 @@
 
 name = "Flow over a cylinder in 3D"
+preferred_tickrate = 75
 kernel_radius = 0.02
 particle_render_factor = 0.6
 lighting = true
+view_scale = 1.3
 gravity = 2.1
-time_step = 0.01
-subticks = 2
+time_step = 0.005
+subticks = 1
 artificial_viscocity = 500.0
 integrator = "RK4"
 

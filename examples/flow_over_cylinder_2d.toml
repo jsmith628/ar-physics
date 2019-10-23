@@ -1,5 +1,9 @@
 
 name = "Flow over a cylinder in 2D"
+preferred_tickrate = 75
+particle_render_factor = 1.0
+view_scale = 1.45
+view_pos = [0.0,0.45,0.0]
 kernel_radius = 0.008
 gravity = 3.1
 time_step = 0.01

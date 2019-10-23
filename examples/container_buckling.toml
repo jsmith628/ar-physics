@@ -4,8 +4,8 @@ lighting = true
 particle_render_factor = 0.7
 kernel_radius = 0.02
 gravity = 10.0
-time_step = 0.001
-subticks = 10
+time_step = 0.0001
+subticks = 1
 artificial_viscocity = 0.0
 integrator = "Verlet"
 

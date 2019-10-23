@@ -1,6 +1,10 @@
 
 name = "Rayleigh-Taylor Instability"
 kernel_radius = 0.008
+particle_render_factor = 1.0
+lighting = false
+view_scale = 1.5
+view_pos = [0.0,0.35,0.0]
 gravity = 5.1
 time_step = 0.01
 subticks = 71
@@ -11,22 +15,22 @@ min = [-0.2,-1.0]
 dim = [0.4,1.5]
 
 [objects.f1]
+  packing = 0.5
   density = 1.0
   speed_of_sound = 6000.0
   viscocity = 1.0
   color = [0.0,0.0,1.0,1.0]
-  color_low_density = [0.0,1.0,0.0,1.0]
-  color_high_density = [1.0,0.0,0.0,1.0]
   region = {min = [-0.17,-0.47], dim = [0.34,0.15]}
 
 [objects.f2]
+  packing = 0.5
   density = 5.0
   speed_of_sound = 6000.0
   viscocity = 1.0
   color = [1.0,0.0,0.0,1.0]
   # color_low_density = [0.0,1.0,0.0,1.0]
   # color_high_density = [1.0,0.0,0.0,1.0]
-  region = {min = [-0.17,-0.31], dim = [0.34,0.15]}
+  region = {min = [-0.17,-0.315], dim = [0.34,0.15]}
 
 
 [boundaries.border]

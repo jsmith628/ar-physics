@@ -1,5 +1,5 @@
-
-name = "Flow over a cylinder in 2D"
+name = "Interactivity Demo"
+preferred_tickrate = 120
 kernel_radius = 0.016
 gravity = 3.1
 time_step = 0.01
@@ -54,7 +54,7 @@ dim = [0.4,1.1]
   color_low_density = [0.0,1.0,0.0,1.0]
   color_high_density = [1.0,0.0,0.0,1.0]
 
-  region = {center = [0.0,0.0], dim = [0.03,0.03]}
+  region = {center = [0.0,0.0], dim = [0.06,0.06]}
 
 
 [boundaries.border]

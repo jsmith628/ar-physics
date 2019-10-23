@@ -1,12 +1,12 @@
 
-name = "Wave in 3D"
-kernel_radius = 0.013
+name = "Real-time Wave in 3D"
+preferred_tickrate = 75
+kernel_radius = 0.03
 particle_render_factor = 0.6
 lighting = true
 gravity = 2.1
-time_step = 0.005
-subticks = 5
-artificial_viscocity = 200.0
+time_step = 0.007
+subticks = 1
 integrator = "RK4"
 
 min = [-1.0,-1.0,-1.0]
@@ -23,15 +23,16 @@ dim = [2.0,2.0,2.0]
 
 [objects.f1]
   packing = 0.5
-  speed_of_sound = 3000.0
+  speed_of_sound = 4000.0
   viscocity = 0.0
+  bulk_viscocity = 400.0
   color = [0.0,0.0,1.0,0.1]
   density = 1.0
   #color_low_density = [0.0,1.0,0.0,0.1]
   #color_high_density = [1.0,0.0,0.0,0.1]
 
   union = [
-    {center = [-0.36,0.05, -0.0], dim = [0.16, 1.0, 0.115]},
-    {center = [0.0,-0.435, -0.0], dim = [0.885,0.22, 0.115]}
+    {center = [-0.37,-0.1, -0.0], dim = [0.1, 0.7, 0.11]},
+    {center = [0.0,-0.465, -0.0], dim = [0.86,0.14, 0.11]}
   ]
   border = {contact_strength = 1000.0}

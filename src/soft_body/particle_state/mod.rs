@@ -102,7 +102,7 @@ impl ParticleState {
         let arith = self.arith.as_ref().unwrap();
         let mut lc = self.terms.borrow_mut();
 
-        let arr = lc.as_ref().iter().map(|(p,r)| (*r,&*p.0)).collect::<Vec<_>>();
+        let arr = lc.iter().map(|(r,p)| (*r,&*p.0)).collect::<Vec<_>>();
 
         if arr.len()==1 && arr[0].0==1.0 {return};
 
@@ -165,7 +165,7 @@ impl ParticleState {
         let arith = self.arith.take();
         let particles = {
             self.terms.into_inner().into_iter().next()
-                .map(|(mut t,_)| {Rc::make_mut(&mut t.0); Rc::try_unwrap(t.0).unwrap_or_else(|_| panic!())} )
+                .map(|(_,mut t)| {Rc::make_mut(&mut t.0); Rc::try_unwrap(t.0).unwrap_or_else(|_| panic!())} )
                 .map(f)
         };
         ParticleState {
@@ -182,7 +182,7 @@ impl ParticleState {
         let arith = self.arith.take();
         let particles = {
             self.terms.into_inner().into_iter().next()
-                .map(|(mut t,_)| {Rc::make_mut(&mut t.0); Rc::try_unwrap(t.0).unwrap_or_else(|_| panic!())} )
+                .map(|(_,mut t)| {Rc::make_mut(&mut t.0); Rc::try_unwrap(t.0).unwrap_or_else(|_| panic!())} )
                 .map(f)
                 .unwrap_or_else(|| Vec::with_capacity(0))
         };
@@ -199,7 +199,7 @@ impl ParticleState {
     pub fn map_into_or_else<R,F:FnOnce(Particles)->R,G:FnOnce()->R>(self, def:G, f:F) -> R {
         self.reduce();
         self.terms.into_inner().into_iter().next()
-            .map(|(mut t,_)| {Rc::make_mut(&mut t.0); Rc::try_unwrap(t.0).unwrap_or_else(|_| panic!())} )
+            .map(|(_,mut t)| {Rc::make_mut(&mut t.0); Rc::try_unwrap(t.0).unwrap_or_else(|_| panic!())} )
             .map_or_else(def, f)
     }
 
@@ -211,7 +211,7 @@ impl ParticleState {
         ::std::mem::swap(&mut *self.terms.borrow_mut(), &mut temp);
         let particles = temp
             .into_iter().next()
-            .map(|(mut t,_)| {Rc::make_mut(&mut t.0); Rc::try_unwrap(t.0).unwrap_or_else(|_| panic!())} );
+            .map(|(_,mut t)| {Rc::make_mut(&mut t.0); Rc::try_unwrap(t.0).unwrap_or_else(|_| panic!())} );
 
         match particles {
             Some(mut p) => {
@@ -227,19 +227,19 @@ impl ParticleState {
     pub fn map_ref_or<R,F:FnOnce(&Particles)->R>(&self, def:R, f:F) -> R { self.map_ref_or_else(|| def, f) }
     pub fn map_ref_or_else<R,F:FnOnce(&Particles)->R,G:FnOnce()->R>(&self, def:G, f:F) -> R {
         self.reduce();
-        self.terms.borrow().as_ref().iter().next().map(|(t,_)|t.0.as_ref()).map_or_else(def, f)
+        self.terms.borrow().iter().next().map(|(_,t)|t.0.as_ref()).map_or_else(def, f)
     }
 
     pub fn replace(&mut self, p:Particles) { *self.terms.borrow_mut() = Term(Rc::new(p)).into(); }
 
     pub fn velocity(self) -> Self {
 
-        if self.terms.borrow().terms()==0 || self.arith.is_none() {
+        if self.terms.borrow().num_terms()==0 || self.arith.is_none() {
             self
-        } else if self.terms.borrow().terms()==1 && self.arith.is_some() {
+        } else if self.terms.borrow().num_terms()==1 && self.arith.is_some() {
             let arith = self.arith.unwrap();
             let particles = self.terms.into_inner().into_iter().map(
-                |(p,r)| arith.velocity((r,&*p.0))
+                |(r,p)| arith.velocity((r,&*p.0))
             ).next().unwrap();
 
             Self::with_arith(particles, arith)

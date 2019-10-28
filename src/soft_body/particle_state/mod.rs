@@ -68,7 +68,7 @@ glsl!{$
 }
 
 #[derive(Clone)]
-struct Term(Rc<Particles>);
+struct Term(Rc<Particles>, ArithShaders);
 impl Eq for Term {}
 impl PartialEq for Term { #[inline] fn eq(&self, rhs:&Self) -> bool {Rc::ptr_eq(&self.0, &rhs.0)} }
 impl Hash for Term {
@@ -76,121 +76,72 @@ impl Hash for Term {
 }
 
 pub struct ParticleState {
-    terms: RefCell<FreeModule<GLfloat, Term>>,
-    arith: Option<ArithShaders>
+    terms: RefCell<FreeModule<GLfloat, Term>>
 }
 
 impl ParticleState {
 
     pub fn new(particles: Particles) -> Self {
-        ParticleState {
-            arith: Some(ArithShaders::new(&particles.particles().gl_provider()).unwrap()),
-            terms: RefCell::new(Term(Rc::new(particles)).into()),
-        }
+        let arith = ArithShaders::new(&particles.particles().gl_provider()).unwrap();
+        Self::with_arith(particles, arith)
     }
 
     fn with_arith(particles: Particles, arith: ArithShaders) -> Self {
-        ParticleState {
-            terms: RefCell::new(Term(Rc::new(particles)).into()),
-            arith: Some(arith)
-        }
+        ParticleState { terms: RefCell::new(Term(Rc::new(particles), arith).into()) }
     }
 
     fn reduce_with_ref(&self) {
-        if self.arith.is_none() {return;}
-
-        let arith = self.arith.as_ref().unwrap();
-        let mut lc = self.terms.borrow_mut();
-
-        let arr = lc.iter().map(|(r,p)| (*r,&*p.0)).collect::<Vec<_>>();
-
-        if arr.len()==1 && arr[0].0==1.0 {return};
-
         let prof = unsafe { crate::PROFILER.as_mut().unwrap() };
         prof.new_segment("Arith".to_string());
 
-        let buf = arith.linear_combination(arr);
+        let mut lc = self.terms.borrow_mut();
+        let buf = {
+            if let Some(arith) = lc.iter().next().map(|(_,t)| &t.1) {
+                let arr = lc.iter().map(|(r,p)| (*r,&*p.0)).collect::<Vec<_>>();
+                arith.linear_combination(arr).map(|b| Term(Rc::new(b),arith.clone()))
+            } else {
+                None
+            }
+        };
+        *lc = buf.map_or_else(|| Zero::zero(), |t| t.into());
 
         prof.end_segment();
-
-        *lc = match buf {
-            Some(b) => Term(Rc::new(b)).into(),
-            None => FreeModule::zero()
-        }
 
     }
 
     fn reduce(&self) {
         self.reduce_with_ref()
-
-        // if self.arith.is_none() {return;}
-        //
-        // let arith = self.arith.as_ref().unwrap();
-        //
-        // let mut lc = self.terms.borrow_mut();
-        // let mut temp = Default::default();
-        // ::std::mem::swap(&mut temp, &mut *lc);
-        //
-        // let mut rcs = Vec::with_capacity(temp.terms());
-        // let mut ownd = Vec::with_capacity(temp.terms());
-        //
-        // temp.into_iter().map(|(t,r)| (Rc::try_unwrap(t.0), r)).for_each(
-        //     |(res, r)| match res {
-        //         Ok(p) => ownd.push((r, p.buf)),
-        //         Err(rc) => rcs.push((r, rc)),
-        //     }
-        // );
-        //
-        // let refs = rcs.iter().map(|(r,c)| (*r,&c.buf)).collect::<Vec<_>>();
-        // if ownd.len()==0 && refs.len()==1 && refs[0].0==1.0 {
-        //     *lc = Term(rcs.pop().unwrap().1).into();
-        //     return;
-        // }
-        //
-        // let prof = unsafe { crate::PROFILER.as_mut().unwrap() };
-        // prof.new_segment("Arith".to_string());
-        //
-        // let buf = arith.reduce(ownd, refs);
-        //
-        // prof.end_segment();
-        //
-        // *lc = match buf {
-        //     Some(b) => Term(Rc::new(Particles{ buf:b })).into(),
-        //     None => FreeModule::zero(),
-        // }
     }
 
-    pub fn map<F:FnOnce(Particles)->Particles>(mut self, f:F) -> Self {
+    pub fn map<F:FnOnce(Particles)->Particles>(self, f:F) -> Self {
         self.reduce();
-        let arith = self.arith.take();
-        let particles = {
-            self.terms.into_inner().into_iter().next()
-                .map(|(_,mut t)| {Rc::make_mut(&mut t.0); Rc::try_unwrap(t.0).unwrap_or_else(|_| panic!())} )
-                .map(f)
-        };
         ParticleState {
-            terms: RefCell::new(match particles {
-                Some(p) => Term(Rc::new(p)).into(),
-                None => Zero::zero()
-            }),
-            arith: arith
+            terms: RefCell::new(
+                self.terms.into_inner().into_iter().next().map_or_else(
+                    || Zero::zero(),
+                    |(_,mut t)| {
+                        Rc::make_mut(&mut t.0);
+                        let p = Rc::try_unwrap(t.0).unwrap_or_else(|_| panic!());
+                        Term(Rc::new(f(p)), t.1.clone()).into()
+                    }
+                )
+            )
         }
     }
 
-    pub fn map_terms<F:FnOnce(Particles)->Vec<Particles>>(mut self, f:F) -> Self {
+    pub fn map_terms<F:FnOnce(Particles)->Vec<Particles>>(self, f:F) -> Self {
         self.reduce();
-        let arith = self.arith.take();
-        let particles = {
-            self.terms.into_inner().into_iter().next()
-                .map(|(_,mut t)| {Rc::make_mut(&mut t.0); Rc::try_unwrap(t.0).unwrap_or_else(|_| panic!())} )
-                .map(f)
-                .unwrap_or_else(|| Vec::with_capacity(0))
-        };
         ParticleState {
             terms: RefCell::new(
-                particles.into_iter().fold(Zero::zero(), |terms, p| terms + Term(Rc::new(p)).into())
-            ),
-            arith: arith
+                self.terms.into_inner().into_iter().next().map_or_else(
+                    || Zero::zero(),
+                    |(_,Term(mut p, arith))| {
+                        Rc::make_mut(&mut p);
+                        let p = Rc::try_unwrap(p).unwrap_or_else(|_| panic!());
+                        f(p).into_iter().map(|p2| Term(Rc::new(p2), arith.clone())).sum()
+                    }
+                )
+            )
         }
     }
 
@@ -198,9 +149,12 @@ impl ParticleState {
     pub fn map_into_or<R,F:FnOnce(Particles)->R>(self, def:R, f:F) -> R {self.map_into_or_else(|| def, f)}
     pub fn map_into_or_else<R,F:FnOnce(Particles)->R,G:FnOnce()->R>(self, def:G, f:F) -> R {
         self.reduce();
-        self.terms.into_inner().into_iter().next()
-            .map(|(_,mut t)| {Rc::make_mut(&mut t.0); Rc::try_unwrap(t.0).unwrap_or_else(|_| panic!())} )
-            .map_or_else(def, f)
+        self.terms.into_inner().into_iter().next().map(
+            |(_,mut t)| {
+                Rc::make_mut(&mut t.0);
+                Rc::try_unwrap(t.0).unwrap_or_else(|_| panic!())
+            }
+        ).map_or_else(def, f)
     }
 
     pub fn map_mut<R,F:FnOnce(&mut Particles)->R>(&mut self, f:F) -> Option<R>{ self.map_mut_or(None, |p| Some(f(p))) }
@@ -209,18 +163,12 @@ impl ParticleState {
         self.reduce();
         let mut temp = FreeModule::zero();
         ::std::mem::swap(&mut *self.terms.borrow_mut(), &mut temp);
-        let particles = temp
-            .into_iter().next()
-            .map(|(_,mut t)| {Rc::make_mut(&mut t.0); Rc::try_unwrap(t.0).unwrap_or_else(|_| panic!())} );
 
-        match particles {
-            Some(mut p) => {
-                let res = f(&mut p);
-                *self.terms.borrow_mut() = Term(Rc::new(p)).into();
-                res
-            },
-            None => def()
-        }
+        let mut collection: Vec<_> = temp.into_iter().collect();
+        let result = collection.iter_mut().next().map_or_else(def, |t| f(Rc::make_mut(&mut (t.1).0)));
+        *self.terms.borrow_mut() = collection.into_iter().sum();
+
+        result
     }
 
     pub fn map_ref<R,F:FnOnce(&Particles)->R>(&self, f:F) -> Option<R>{ self.map_ref_or(None, |p| Some(f(p))) }
@@ -230,58 +178,54 @@ impl ParticleState {
         self.terms.borrow().iter().next().map(|(_,t)|t.0.as_ref()).map_or_else(def, f)
     }
 
-    pub fn replace(&mut self, p:Particles) { *self.terms.borrow_mut() = Term(Rc::new(p)).into(); }
+    pub fn replace(&mut self, p:Particles) {
+        let arith = match self.terms.borrow().iter().next() {
+            Some((_,t)) => t.1.clone(),
+            None => ArithShaders::new(&p.particles().gl_provider()).unwrap()
+        };
+        *self.terms.borrow_mut() = Term(Rc::new(p), arith).into();
+    }
 
     pub fn velocity(self) -> Self {
 
-        if self.terms.borrow().num_terms()==0 || self.arith.is_none() {
+        if self.terms.borrow().num_terms()==0 {
             self
-        } else if self.terms.borrow().num_terms()==1 && self.arith.is_some() {
-            let arith = self.arith.unwrap();
+        } else if self.terms.borrow().num_terms()==1 {
             let particles = self.terms.into_inner().into_iter().map(
-                |(r,p)| arith.velocity((r,&*p.0))
+                |(r,Term(p,arith))| Term(Rc::new(arith.velocity((r,&*p))), arith)
             ).next().unwrap();
 
-            Self::with_arith(particles, arith)
+            Self { terms: RefCell::new(particles.into()) }
         } else {
             self.reduce();
             self.velocity()
         }
     }
 
-
 }
 
 impl Clone for ParticleState {
     fn clone(&self) -> Self {
         self.reduce();
-        ParticleState {terms: self.terms.clone(), arith: self.arith.clone()}
+        ParticleState {terms: self.terms.clone()}
     }
 }
 
 impl AddAssign for ParticleState {
-    #[inline] fn add_assign(&mut self, rhs:Self) {
-        self.arith = self.arith.take().or(rhs.arith);
-        *self.terms.borrow_mut() += rhs.terms.into_inner();
-    }
+    #[inline] fn add_assign(&mut self, rhs:Self) {*self.terms.borrow_mut()+=rhs.terms.into_inner();}
 }
 
 impl SubAssign for ParticleState {
-    #[inline] fn sub_assign(&mut self, rhs:Self) {
-        self.arith = self.arith.take().or(rhs.arith);
-        *self.terms.borrow_mut() -= rhs.terms.into_inner();
-    }
+    #[inline] fn sub_assign(&mut self, rhs:Self) { *self.terms.borrow_mut()-=rhs.terms.into_inner();}
 }
 
 impl Neg for ParticleState {
     type Output = Self;
-    #[inline] fn neg(self) -> Self {
-        ParticleState {terms: RefCell::new(-self.terms.into_inner()), arith: self.arith.clone()}
-    }
+    #[inline] fn neg(self) -> Self { ParticleState {terms: RefCell::new(-self.terms.into_inner())} }
 }
 
 impl Zero for ParticleState {
-    #[inline] fn zero() -> Self { ParticleState {terms: RefCell::new(Zero::zero()), arith: None} }
+    #[inline] fn zero() -> Self { ParticleState {terms: RefCell::new(Zero::zero())} }
     #[inline] fn is_zero(&self) -> bool { self.terms.borrow().is_zero() }
 }
 
@@ -299,15 +243,22 @@ impl Distributive<GLfloat> for ParticleState {}
 
 impl InnerProductSpace<GLfloat> for ParticleState {
     fn inner_product(self, rhs: Self) -> GLfloat {
-        let a = self.arith.clone().or_else(|| rhs.arith.clone());
-        if let Some(arith) = a {
-            let prof = unsafe { crate::PROFILER.as_mut().unwrap() };
-            prof.new_segment("Norm".to_string());
-            let dot = self.map_into_or(0.0, |p1| rhs.map_into_or(0.0, |p2| arith.dot(&p1.particles(), &p2.particles())));
-            prof.end_segment();
-            dot
-        } else {
-            0.0
-        }
+        let prof = unsafe { crate::PROFILER.as_mut().unwrap() };
+        prof.new_segment("Norm".to_string());
+
+        if self.terms.borrow().num_terms()>1 {self.reduce();}
+        let dot = self.terms.into_inner().into_iter().next().map_or_else(
+            || 0.0,
+            |(r1,Term(p1,arith))| {
+                if rhs.terms.borrow().num_terms()>1 {rhs.reduce();}
+                rhs.terms.into_inner().into_iter().next().map_or_else(
+                    || 0.0,
+                    |(r2,Term(p2,_))| r1 * r2 * arith.dot(&p1.particles(), &p2.particles())
+                )
+            }
+        );
+
+        prof.end_segment();
+        dot
     }
 }

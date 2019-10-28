@@ -114,19 +114,7 @@ impl ParticleState {
     }
 
     pub fn map<F:FnOnce(Particles)->Particles>(self, f:F) -> Self {
-        self.reduce();
-        ParticleState {
-            terms: RefCell::new(
-                self.terms.into_inner().into_iter().next().map_or_else(
-                    || Zero::zero(),
-                    |(_,mut t)| {
-                        Rc::make_mut(&mut t.0);
-                        let p = Rc::try_unwrap(t.0).unwrap_or_else(|_| panic!());
-                        Term(Rc::new(f(p)), t.1.clone()).into()
-                    }
-                )
-            )
-        }
+        self.map_terms(|p| vec![f(p)])
     }
 
     pub fn map_terms<F:FnOnce(Particles)->Vec<Particles>>(self, f:F) -> Self {

@@ -10,9 +10,9 @@ path = "src/ar_physics.rs"
 
 [dependencies]
 macro-program = {path="../macro-program"}
-maths-traits = {path="../math-traits"}
+maths-traits = "0.2"
 numerical-integration = {path="../numerical-integration"}
-free-algebra = {path="../free-algebra"}
+free-algebra = "0.1"
 gl-struct = {path="../gl-struct"}
 ar-engine = {path="../ar-engine"}
 

@@ -149,14 +149,7 @@ impl ParticleState {
     pub fn map_mut_or<R,F:FnOnce(&mut Particles)->R>(&mut self, def:R, f:F) -> R { self.map_mut_or_else(|| def, f) }
     pub fn map_mut_or_else<R,F:FnOnce(&mut Particles)->R,G:FnOnce()->R>(&mut self, def:G, f:F) -> R {
         self.reduce();
-        let mut temp = FreeModule::zero();
-        ::std::mem::swap(&mut *self.terms.borrow_mut(), &mut temp);
-
-        let mut collection: Vec<_> = temp.into_iter().collect();
-        let result = collection.iter_mut().next().map_or_else(def, |t| f(Rc::make_mut(&mut (t.1).0)));
-        *self.terms.borrow_mut() = collection.into_iter().sum();
-
-        result
+        self.terms.borrow_mut().iter_mut().next().map(|(_,t)| Rc::make_mut(&mut t.0)).map_or_else(def, f)
     }
 
     pub fn map_ref<R,F:FnOnce(&Particles)->R>(&self, f:F) -> Option<R>{ self.map_ref_or(None, |p| Some(f(p))) }
@@ -176,9 +169,9 @@ impl ParticleState {
 
     pub fn velocity(self) -> Self {
 
-        if self.terms.borrow().num_terms()==0 {
+        if self.terms.borrow().len()==0 {
             self
-        } else if self.terms.borrow().num_terms()==1 {
+        } else if self.terms.borrow().len()==1 {
             let particles = self.terms.into_inner().into_iter().map(
                 |(r,Term(p,arith))| Term(Rc::new(arith.velocity((r,&*p))), arith)
             ).next().unwrap();
@@ -234,11 +227,11 @@ impl InnerProductSpace<GLfloat> for ParticleState {
         let prof = unsafe { crate::PROFILER.as_mut().unwrap() };
         prof.new_segment("Norm".to_string());
 
-        if self.terms.borrow().num_terms()>1 {self.reduce();}
+        if self.terms.borrow().len()>1 {self.reduce();}
         let dot = self.terms.into_inner().into_iter().next().map_or_else(
             || 0.0,
             |(r1,Term(p1,arith))| {
-                if rhs.terms.borrow().num_terms()>1 {rhs.reduce();}
+                if rhs.terms.borrow().len()>1 {rhs.reduce();}
                 rhs.terms.into_inner().into_iter().next().map_or_else(
                     || 0.0,
                     |(r2,Term(p2,_))| r1 * r2 * arith.dot(&p1.particles(), &p2.particles())

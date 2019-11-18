@@ -17,7 +17,7 @@ gl-struct = {path="../gl-struct"}
 ar-engine = {path="../ar-engine"}
 
 [dev-dependencies]
-glfw = "0.32.0"
+glfw = "0.34.0"
 rand = "0.5.5"
 toml = "0.5"
 rayon = "1.1"

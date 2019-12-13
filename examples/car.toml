@@ -2,27 +2,32 @@
 name = "Car"
 lighting = true
 particle_render_factor = 0.7
-# view_angle = 90.0
+view_angle = 90.0
 kernel_radius = 0.014
-gravity = 5.0
+gravity = 0.5
 time_step = 0.00001
 subticks = 1
 artificial_viscocity = 0.0
 integrator = "Verlet"
 
-min = [-0.5,-0.24,-0.5]
-dim = [1.0,1.0,1.0]
+min = [-0.6,-0.24,-0.6]
+dim = [1.25,1.0,1.25]
 
 [objects.car]
-  packing = 0.7
+  packing = 0.5
   density = 0.3
-  normal_stiffness = -10000000000.0
-  shear_stiffness = -3000000000.0
+  normal_stiffness = -1000000000.0
+  shear_stiffness = -1000000000.0
   shear_dampening = -5000.0
-  velocity = [0.0,0.0,0.0]
-  color = [0.0,0.0,1.0,1.0]
-  floor = { potential = "linear", contact_strength = 100000.0 , friction = 1.0}
-  axels = { potential = "linear", contact_strength = 100000.0 , friction = 0.0}
+  velocity = [0.0,0.0,2.0]
+  color = [0.5,0.0,1.0,1.0]
+  floor = {contact_strength = 500000.0, friction = 1.0}
+  axels1 = {contact_strength = 100000.0, friction = 0.0}
+  axels2 = {contact_strength = 100000.0, friction = 0.0}
+  yield_strength = 50000000.0
+  relaxation_time = 40000.0
+  work_hardening = 500000000.0
+
   # axels = { potential = "zero", contact_strength = 0.0 , friction = 0.0}
 
   # region = {translation = [-0.2,-0.15,-0.35], scale = [0.2,0.2,0.2], model = "examples/models/carbody no chair.stl"}
@@ -34,34 +39,49 @@ dim = [1.0,1.0,1.0]
     {region = {translation = [-0.2,-0.22,-0.35], scale = [0.2,0.2,0.2], model = "examples/models/car.stl"}}
   ]
 
-[objects.axels]
+[objects.axel1]
   packing = 0.6
   density = 1.0
-  strain_order = 0
+  # strain_order = 0
   normal_stiffness = -10000000000.0
   shear_stiffness = -10000000000.0
   shear_dampening = -5000.0
-  velocity = [0.0,0.0,0.0]
+  normal_dampening = -5000.0
+  velocity = [0.0,0.0,2.0]
+  angular_velocity = [0.0,0.0,0.0]
   color = [0.0,0.0,1.0,1.0]
-  floor = { potential = "linear", contact_strength = 100000.0 , friction = 1.0}
-  union = [
-    {region = {translation = [-0.2,-0.22,-0.35], scale = [0.2,0.2,0.2], model = "examples/models/axels.stl"}},
-    {region = {translation = [-0.2,-0.22,-0.35], scale = [0.2,0.2,0.2], model = "examples/models/wheels.stl"}}
+  floor = {contact_strength = 100000.0, friction = 1.0}
+  intersection = [
+    {min = [-0.2,-0.22,-0.35], dim = [0.45,0.14,0.25]},
+    {union = [{region = {translation = [-0.2,-0.22,-0.35], scale = [0.2,0.2,0.2], model = "examples/models/axels.stl"}}, {region = {translation = [-0.2,-0.22,-0.35], scale = [0.2,0.2,0.2], model = "examples/models/wheels.stl"}}]}
   ]
-#
-# [objects.axels.region]
-#   # rotation = [1.0,0.0,0.0,1.0]
-#   intersection = [
-#     {min = [-0.2,-0.22,-0.2], dim = [0.45,0.14,0.25]},
-#     {region = {translation = [-0.2,-0.22,-0.2], scale = [0.2,0.2,0.2], model = "examples/models/shaft2_wheels4.STL"}}
-#   ]
+
+[objects.axel2]
+  packing = 0.6
+  density = 1.0
+  # strain_order = 0
+  normal_stiffness = -10000000000.0
+  shear_stiffness = -10000000000.0
+  shear_dampening = -5000.0
+  normal_dampening = -5000.0
+  velocity = [0.0,0.0,2.0]
+  angular_velocity = [0.0,0.0,10.0]
+  color = [0.0,0.0,1.0,1.0]
+  floor = {contact_strength = 100000.0, friction = 1.0}
+  intersection = [
+    {scale = [1.0,1.0,-1.0], min = [-0.2,-0.22,-0.3], dim = [0.45,0.14,0.25]},
+    {union = [{region = {translation = [-0.2,-0.22,-0.35], scale = [0.2,0.2,0.2], model = "examples/models/axels.stl"}}, {region = {translation = [-0.2,-0.22,-0.35], scale = [0.2,0.2,0.2], model = "examples/models/wheels.stl"}}]}
+  ]
 
 
 [boundaries.floor]
   packing = 0.5
   friction = 1.0
   color = [0.0,0.0,0.0,0.01]
-  region = {min = [-0.5,-0.24,-0.5], dim = [1.0,0.01,1.0]}
+  union = [
+    {min = [-0.5,-0.24,-0.5], dim = [1.0,0.01,1.0]},
+    {min = [-0.25,-0.24,0.4], dim = [0.5,0.25,0.04]}
+  ]
 
 # [boundaries.circle]
 #   packing = 0.5

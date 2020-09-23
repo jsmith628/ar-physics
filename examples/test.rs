@@ -824,13 +824,13 @@ fn main() {
 
         let [color,depth] = unsafe {
             let mut rb = MaybeUninit::<[GLuint;2]>::uninit();
-            gl::GenRenderbuffers(2, &mut rb.get_mut()[0] as *mut GLuint);
+            gl::GenRenderbuffers(2, &mut rb.assume_init_mut()[0] as *mut GLuint);
             rb.assume_init()
         };
 
         let fb = unsafe {
             let mut fb = MaybeUninit::uninit();
-            gl::GenFramebuffers(1, fb.get_mut());
+            gl::GenFramebuffers(1, fb.assume_init_mut());
             fb.assume_init()
         };
 

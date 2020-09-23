@@ -47,7 +47,7 @@ impl<T:GPUCopy> BufVec<T> {
         if self.len() > 0 {
             unsafe {
                 let mut item = MaybeUninit::uninit();
-                copy_nonoverlapping(&self.buf.map()[self.len-1], item.get_mut(), 1);
+                copy_nonoverlapping(&self.buf.map()[self.len-1], item.assume_init_mut(), 1);
                 self.len -= 1;
                 Some(item.assume_init())
             }

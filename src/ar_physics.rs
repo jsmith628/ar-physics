@@ -5,8 +5,6 @@
 #![feature(wait_until)]
 #![feature(maybe_uninit_ref)]
 
-
-#[macro_use] extern crate macro_program;
 #[macro_use] extern crate gl_struct;
 
 extern crate ar_engine;

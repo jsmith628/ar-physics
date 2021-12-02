@@ -9,7 +9,6 @@ name = "ar_physics"
 path = "src/ar_physics.rs"
 
 [dependencies]
-macro-program = {path="../macro-program"}
 maths-traits = "0.2"
 numerical-integration = "0.0.1"
 free-algebra = "0.1"

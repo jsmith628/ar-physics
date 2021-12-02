@@ -1,4 +1,10 @@
 
+macro_rules! count {
+    () => { 0 };
+    ($t0:tt $($tt:tt)*) => { 1 + count!($($tt)*) };
+}
+
+
 macro_rules! gen_lin_comb{
 
     ($d:tt $shdr1:ident $shdr2:ident $(($r:ident $p:ident $p_alt:ident))* ) => {
@@ -20,7 +26,7 @@ macro_rules! gen_lin_comb{
 
                     impl Program {
                         pub(super) fn into_closure(self) -> LCClosure {
-                            const N: usize = macro_program!([$($r)*] @count @num_expr @return);
+                            const N: usize = count!($($r)*);
                             let shader = RefCell::new(self);
                             Box::new(
                                 move |arr| {
@@ -89,7 +95,7 @@ macro_rules! gen_lin_comb{
 
                     impl Program {
                         pub(super) fn into_closure(self) -> SolidLCClosure {
-                            const N: usize = macro_program!([$($r)*] @count @num_expr @return);
+                            const N: usize = count!($($r)*);
                             let shader = RefCell::new(self);
                             Box::new(
                                 move |arr| {

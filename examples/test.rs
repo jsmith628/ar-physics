@@ -6,7 +6,6 @@ extern crate gl_struct;
 extern crate glfw;
 extern crate toml;
 extern crate stl_io;
-extern crate rayon;
 
 extern crate ar_physics;
 extern crate ar_engine;
@@ -39,6 +38,10 @@ use ar_engine::timer::{ConstantTimer};
 
 use numerical_integration::*;
 
+pub use self::test_mods::*;
+pub use self::test_mods::Surface;
+
+mod test_mods;
 
 glsl!{$
 
@@ -174,146 +177,6 @@ glsl!{$
 
 }
 
-pub struct Mesh {
-    mesh:IndexedMesh
-}
-
-pub struct Surface {
-    mesh:IndexedMesh,
-    border: f32
-}
-
-fn point_bound(verts: &Vec<Vertex>) -> AABB {
-    let mut min = [verts[0][0], verts[0][1], verts[0][2], 0.0];
-    let mut max = min;
-
-    for v in verts.iter() {
-        for i in 0..3 {
-            min[i] = v[i].min(min[i]);
-            max[i] = v[i].max(max[i]);
-        }
-    }
-
-    AABB::from_min_max(min.into(),max.into())
-}
-
-impl Region for Mesh {
-    fn bound(&self) -> AABB { point_bound(&self.mesh.vertices) }
-
-    fn contains(&self, p: vec4) -> bool {
-
-        //if we have a 4D point, we're not in the mesh
-        if p.value[3] != 0.0 { return false; }
-
-        //because we don't actually have a good dot product operation
-        // fn dot(v1:&[f32], v2: &[f32]) -> f32 { v1[0]*v2[0] + v1[1]*v2[1] }
-
-        self.mesh.faces.iter().map(
-            |f| [
-                self.mesh.vertices[f.vertices[0]],
-                self.mesh.vertices[f.vertices[1]],
-                self.mesh.vertices[f.vertices[2]]
-            ]
-        ).map(
-            |verts| {
-                let above = {
-                    verts[0][2] >= p.value[2] ||
-                    verts[1][2] >= p.value[2] ||
-                    verts[2][2] >= p.value[2]
-                };
-
-                if above {
-                    let (a,b,c) = (
-                        [verts[0][0],verts[0][1]],
-                        [verts[1][0],verts[1][1]],
-                        [verts[2][0],verts[2][1]]
-                    );
-
-                    let (s1,s2,d) = (
-                        [b[0]-a[0],b[1]-a[1]],
-                        [c[0]-a[0],c[1]-a[1]],
-                        [p.value[0]-a[0],p.value[1]-a[1]]
-                    );
-
-                    let mut a = s1[0]*s2[1] - s1[1]*s2[0];
-                    let s = a.signum() * (d[0]*s2[1] - d[1]*s2[0]);
-                    let t = a.signum() * (s1[0]*d[1] - s1[1]*d[0]);
-                    a = a.abs();
-
-                    s>=0.0 && s<=a && t>=0.0 && t<=a && s+t<=a
-
-                } else {
-                    false
-                }
-            }
-        ).fold(false, |b1,b2| b1^b2)
-    }
-}
-
-impl Region for Surface {
-
-    fn bound(&self) -> AABB {
-        let mut bound = point_bound(&self.mesh.vertices);
-        for i in 0..3 {
-            bound.min[i] -= self.border;
-            bound.dim[i] += self.border*2.0;
-        }
-        bound
-    }
-
-    fn contains(&self, p: vec4) -> bool {
-
-        fn dot(v1: &[f32], v2: &[f32]) -> f32 {
-            v1[0]*v2[0] + v1[1]*v2[1] + v1[2]*v2[2]
-        }
-
-        fn cross(v1: &[f32], v2: &[f32]) -> [f32;3] {
-            [v1[1]*v2[2] - v1[2]*v2[1], v1[2]*v2[0] - v1[0]*v2[2], v1[0]*v2[1] - v1[1]*v2[0]]
-        }
-
-        fn sub(v1: &[f32], v2: &[f32]) -> [f32;3] { [v1[0]-v2[0],v1[1]-v2[1],v1[2]-v2[2]] }
-
-        for v in self.mesh.vertices.iter() {
-            let d = sub(&p.value, v);
-            if dot(&d, &d) <= self.border*self.border { return true; }
-        }
-
-
-        for f in self.mesh.faces.iter() {
-            let n = f.normal;
-
-            let (a,b,c) = (
-                self.mesh.vertices[f.vertices[0]],
-                self.mesh.vertices[f.vertices[1]],
-                self.mesh.vertices[f.vertices[2]]
-            );
-
-            let d = sub(&p.value, &a);
-
-            if dot(&d, &n).abs() <= dot(&n, &n).sqrt()*self.border {
-
-                let (s1, s2, s3, s4) = (sub(&b,&a), sub(&c,&a), sub(&c,&b), sub(&a,&b));
-
-                let d2 = sub(&p.value, &b);
-
-                let (n1, n2, n3) = (cross(&s1, &n), cross(&s2, &n), cross(&s3, &n));
-
-                if
-                    dot(&d, &n1).signum() == dot(&s2, &n1).signum() &&
-                    dot(&d, &n2).signum() == dot(&s1, &n2).signum() &&
-                    dot(&d2, &n3).signum() == dot(&s4, &n3).signum()
-                { return true; }
-            }
-        }
-
-        return false;
-
-    }
-
-}
-
-
-
 fn to_vec4(v: &Vec<Value>) -> vec4 {
     let mut p = vec4::default();
     for i in 0..4 { if i<v.len() {p[i] = v[i].as_float().unwrap() as f32;} }
@@ -408,7 +271,11 @@ fn main() {
 
     if let Some(path) = config_loc {
 
-        let config = {
+        //
+        //Get and parse the configuration
+        //
+
+        let config_toml = {
 
             let file = File::open(path).unwrap();
             let mut reader = BufReader::new(file);
@@ -418,20 +285,14 @@ fn main() {
             dest.parse::<Value>().unwrap()
         };
 
-        let title = as_str_or(&config, "name", "Fluid Test");
-        let lighting = as_bool_or(&config, "lighting", config.as_table().unwrap().get("light_pos").is_some());
+        let cfg = Config::parse(&config_toml);
 
-        let subticks = as_int_or(&config, "subticks", 1) as u32;
-        let h = as_float_or(&config, "kernel_radius", 1.0/64.0) as f32;
-        let dt = as_float_or(&config, "time_step", 0.01) as f32;
-        let alpha = as_float_or(&config, "artificial_viscocity", 50.0) as f32;
-        let g = as_float_or(&config, "gravity", 1.0) as f32;
-
-        let min = as_vec4_or(&config, "min", [-1.0,-1.0,0.0,0.0].into());
-        let dim = as_vec4_or(&config, "dim", [2.0,2.0,0.0,0.0].into());
+        //
+        //Set up GL context and window
+        //
 
         let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
-        let mut window = glfw.create_window(win_w, win_h, title, glfw::WindowMode::Windowed).unwrap().0;
+        let mut window = glfw.create_window(win_w, win_h, cfg.title, glfw::WindowMode::Windowed).unwrap().0;
         if record {window.set_resizable(false);}
 
         glfw::Context::make_current(&mut window);
@@ -442,324 +303,30 @@ fn main() {
         };
         let mut context = Context::init(&gl_provider);
         let mut shader = ParticleShader::init(&gl_provider).unwrap();
-        *shader.render_h = h * as_float_or(&config, "particle_render_factor", 1.0) as f32;
-        *shader.lighting = lighting.into();
-        *shader.light = as_vec3_or(&config, "light_pos", [-3.0,3.0,-3.0].into());
-        *shader.ambient_brightness = as_float_or(&config, "ambient_brightness", 1.0) as f32;
-        *shader.diffuse_brightness = as_float_or(&config, "diffuse_brightness", 10.0) as f32;
-        *shader.specular_brightness = as_float_or(&config, "specular_brightness", 0.0) as f32;
-        *shader.light_color = as_vec3_or(&config, "light_color", [1.0,1.0,1.0].into());
 
-        let mut mat_number = 0;
+        //
+        //load shader settings
+        //
 
-        let mut list = Vec::new();
-        let mut names = Vec::new();
-        let mut on_click = Vec::new();
-        let mut interaction_map = HashMap::new();
+        *shader.render_h = cfg.render_h;
+        *shader.lighting = cfg.lighting.into();
+        *shader.light = cfg.light.pos;
+        *shader.ambient_brightness = cfg.light.ambient;
+        *shader.diffuse_brightness = cfg.light.diffuse;
+        *shader.specular_brightness = cfg.light.specular;
+        *shader.light_color = cfg.light.color;
 
-        {
+        //set the colors and densities
+        for (id, obj) in cfg.objects.iter().enumerate() {
+            shader.c2[id] = obj.colors[0];
+            shader.c1[id] = obj.colors[1];
+            shader.c3[id] = obj.colors[2];
+            shader.densities[id] = obj.region.mat.start_den;
+        }
 
-            use toml::value::{Table, Array};
-
-            fn parse_region_from_mat(region: &Table) -> Arc<dyn Region+Send+Sync> {
-
-                type Reg = Arc<dyn Region+Send+Sync>;
-
-                fn fold_array<F:Fn(Reg,Reg) -> Reg>(arr: &Array, f:F) -> Reg {
-                    let mut iter = arr.into_iter().map(|s| parse_region(s.as_table().unwrap()));
-                    let first = iter.next().unwrap();
-                    iter.fold(first, f)
-                }
-
-                fn parse_region(table: &Table) -> Reg {
-
-                    let base = parse_base(table);
-                    let reg = Value::Table(table.clone());
-
-                    if table.get("translation").is_some() || table.get("scale").is_some() || table.get("rotation").is_some() {
-
-                        let trans = as_vec4_or(&reg, "translation", [0.0,0.0,0.0,0.0].into());
-
-                        let rot = match table.get("rotation") {
-                            Some(Value::Float(f)) => [0.0,0.0,1.0,*f as f32],
-                            _ => as_vec4_or(&reg, "rotation", [0.0,0.0,1.0,0.0].into()).value
-                        };
-
-                        let scale = match table.get("scale") {
-                            Some(Value::Float(f)) => [*f as f32;4],
-                            Some(Value::Array(arr)) => {
-                                let mut val = [1.0;4];
-                                for i in 0..(arr.len().min(4)) {val[i] = arr[i].as_float().unwrap() as f32;}
-                                val
-                            },
-                            _ => [1.0;4]
-                        };
-
-                        let c = rot[3].to_radians().cos();
-                        let s = rot[3].to_radians().sin();
-                        let u_l = (rot[0]*rot[0] + rot[1]*rot[1] + rot[2]*rot[2]).sqrt();
-                        let u = [rot[0]/u_l, rot[1]/u_l, rot[2]/u_l];
-
-                        let mut mat = [
-                            [c+u[0]*u[0]*(1.0-c), u[0]*u[1]*(1.0-c)+u[2]*s, u[0]*u[2]*(1.0-c)-u[1]*s, 0.0],
-                            [u[1]*u[2]*(1.0-c)-u[1]*s, c+u[1]*u[1]*(1.0-c), u[1]*u[2]*(1.0-c)+u[0]*s, 0.0],
-                            [u[0]*u[2]*(1.0-c)+u[1]*s, u[1]*u[2]*(1.0-c)-u[0]*s, c+u[2]*u[2]*(1.0-c), 0.0],
-                            [0.0,0.0,0.0,1.0]
-                        ];
-
-
-                        for i in 0..4 {
-                            for j in 0..4 {
-                                mat[i][j] *= scale[i];
-                            }
-                        }
-
-                        Arc::new(Transformed(base,mat.into(),trans))
-
-                    } else {
-                        base
-                    }
-                }
-
-                fn parse_base(region: &Table) -> Reg {
-                    if let Some(Value::String(path)) = region.get("model") {
-                        if let Some(border) = region.get("border").and_then(|b| b.as_float()) {
-                            Arc::new(
-                                Surface{
-                                    mesh: read_stl(&mut File::open(path).unwrap()).unwrap(),
-                                    border: border as f32
-                                }
-                            )
-                        } else {
-                            Arc::new(Mesh{mesh:read_stl(&mut File::open(path).unwrap()).unwrap()})
-                        }
-                    } else {
-                        let boxed;
-                        let mut dim;
-                        let mut min = [0.0,0.0,0.0,0.0].into();
-                        let border = region.get("border").map(|f| f.as_float().unwrap() as f32);
-
-                        if let Some(Value::Array(arr)) = region.get("dim") {
-                            boxed = true;
-                            dim = to_vec4(arr);
-                        } else if let Some(Value::Array(arr)) = region.get("radii") {
-                            boxed = false;
-                            dim = to_vec4(arr);
-                            for i in 0..4 { dim[i] *= 2.0; }
-                        } else if let Some(Value::Array(arr)) = region.get("diameters") {
-                            boxed = false;
-                            dim = to_vec4(arr);
-                        } else {
-                            //catch possible unions/intersections/differences
-                            return parse_region_from_mat(region);
-                        }
-
-                        if let Some(Value::Array(arr)) = region.get("min") {
-                            min = to_vec4(arr);
-                        } else if let Some(Value::Array(arr)) = region.get("center") {
-                            min = to_vec4(arr);
-                            for i in 0..4 { min[i] -= 0.5*dim[i]; }
-                        }
-
-                        if boxed {
-                            if let Some(depth) = border {
-                                Arc::new(AABB {min: min, dim: dim}.border(depth))
-                            } else {
-                                Arc::new(AABB {min: min, dim: dim})
-                            }
-                        } else {
-                            for i in 0..4 {
-                                dim[i] *= 0.5;
-                                min[i] += dim[i];
-                            }
-                            if let Some(depth) = border {
-                                Arc::new(AABE {center: min, radii: dim}.border(depth))
-                            } else {
-                                Arc::new(AABE {center: min, radii: dim})
-                            }
-                        }
-                    }
-
-                }
-
-
-                if let Some(Value::Array(arr)) = region.get("union") {
-                    fold_array(arr, |s1,s2| Arc::new(Union(s1,s2)))
-                } else if let Some(Value::Array(arr)) = region.get("difference") {
-                    fold_array(arr, |s1,s2| Arc::new(Difference(s1,s2)))
-                } else if let Some(Value::Array(arr)) = region.get("intersection") {
-                    fold_array(arr, |s1,s2| Arc::new(Intersection(s1,s2)))
-                } else if let Some(Value::Table(table)) = region.get("region") {
-                    parse_region(table)
-                } else {
-                    panic!("Material has no table named region or doesn't have union, difference, or intersection arrays");
-                }
-            }
-
-            fn parse_interation(table: &Value, h: f64) -> MatInteraction {
-                MatInteraction {
-                    strength: as_float_or(table, "contact_strength", 10000.0) as f32,
-                    radius: as_float_or(table, "contact_radius", as_float_or(table, "contact_factor", 2.0)*h) as f32,
-                    friction: as_float_or(table, "friction", 0.0) as f32,
-                    dampening: as_float_or(table, "dampening", 0.0) as f32,
-
-                    potential: {
-                        match table.as_table().unwrap().get("potential").map(|a| a.as_str().unwrap()) {
-                            Some("Zero") | Some("zero") => ContactPotental::Zero,
-                            Some("Constant") | Some("constant") => ContactPotental::Constant,
-                            Some("Linear") | Some("linear") => ContactPotental::Linear,
-                            Some("Tait") | Some("tait") => ContactPotental::Tait,
-                            Some("Hertz") | Some("hertz") => ContactPotental::Hertz,
-                            Some("LennardJones") | Some("Lennard-Jones") | Some("Lennard Jones") |
-                                Some("lennard jones") | Some("lennard-jones") => ContactPotental::LennardJones,
-
-                            _ => ContactPotental::Linear,
-                        }
-                    } as u32
-                }
-
-            }
-
-            fn get_interactions<'a>(
-                name: &'a str, obj: &'a Value, h: f64, map: &mut HashMap<(&'a str,&'a str), MatInteraction>
-            ) {
-                for (name2, interaction) in obj.as_table().unwrap() {
-                    if interaction.as_table().is_some() {
-                        let mut proper_name = name2.as_str() != "region";
-                        proper_name &= name2.as_str() != "union";
-                        proper_name &= name2.as_str() != "intersection";
-                        proper_name &= name2.as_str() != "difference";
-
-                        if proper_name {
-                            map.insert((name, name2.as_str()) , parse_interation(interaction, h as f64));
-                        }
-                    }
-                }
-            }
-
-            fn set_colors_and_den(mat:&Value, shader: &mut ParticleShader::Program, id:usize, den: f32) {
-                let color = as_vec4_or(&mat, "color", [0.0,0.0,0.0,1.0].into());
-                shader.c2[id] = color;
-                shader.c1[id] = as_vec4_or(&mat, "color_low_density", color);
-                shader.c3[id] = as_vec4_or(&mat, "color_high_density", color);
-
-                shader.densities[id] = den;
-            }
-
-            fn get_packing(region: &Value, h: f32) -> f32 {
-                as_float_or(region, "packing", as_float_or(region, "spacing", 0.5*h as f64)/h as f64) as f32
-            }
-
-            if let Some(Value::Table(boundaries)) = config.get("boundaries") {
-                for (name, immobile) in boundaries {
-                    let packing = get_packing(&immobile, h);
-                    let friction = as_float_or(&immobile, "friction", 0.0) as f32;
-
-                    let region = parse_region_from_mat(immobile.as_table().unwrap());
-
-                    list.push(MaterialRegion::new(region, packing, Material::new_immobile(friction)));
-                    names.push(name.as_str());
-                    get_interactions(name.as_str(), &immobile, h as f64, &mut interaction_map);
-
-                    set_colors_and_den(&immobile, &mut shader, mat_number, 1.0);
-                    mat_number += 1;
-                }
-            }
-
-            if let Some(Value::Table(objects)) = config.get("objects") {
-                for (name, obj) in objects {
-                    let table = obj.as_table().unwrap();
-                    let mut mat = Material::default();
-                    mat.start_den = as_float_or(&obj, "start_density", as_float_or(&obj, "density", 1.0)) as f32;
-                    mat.target_den = as_float_or(&obj, "target_density", as_float_or(&obj, "density", 1.0)) as f32;
-                    mat.sound_speed = as_float_or(&obj, "speed_of_sound", 0.0) as f32;
-                    mat.visc = as_float_or(&obj, "viscocity", as_float_or(&obj, "friction", 0.0)) as f32;
-                    mat.bulk_visc = as_float_or(&obj, "bulk_viscocity", (alpha*h*mat.sound_speed) as f64) as f32;
-                    mat.state_eq = match table.get("state").or(table.get("state_equation")).map(|a| a.as_str().unwrap()) {
-                        None => if table.get("speed_of_sound").is_some() {
-                            if table.get("start_density").is_some() || table.get("target_density").is_some() {
-                                StateEquation::IdealGas
-                            } else {
-                                StateEquation::Tait
-                            }
-                        } else{
-                            StateEquation::Zero
-                        },
-                        Some("Tait") | Some("tait") | Some("Liquid") | Some("liquid") => StateEquation::Tait,
-                        Some("Ideal_Gas") | Some("ideal_gas") | Some("gas") | Some("Gas") => StateEquation::IdealGas,
-                        Some("Constant") | Some("constant") => StateEquation::Constant,
-                        Some(s) => panic!("Invalid state equation: {}", s)
-                    } as u32;
-
-                    mat.strain_order = as_int_or(&obj, "strain_order", 2) as i32;
-                    mat.normal_stiffness = as_float_or(&obj, "normal_stiffness", 0.0) as f32;
-                    mat.shear_stiffness = as_float_or(&obj, "shear_stiffness", 0.0) as f32;
-                    mat.normal_damp = as_float_or(&obj, "normal_dampening", 0.0) as f32;
-                    mat.shear_damp = as_float_or(&obj, "shear_dampening", 0.0) as f32;
-
-                    if table.get("yield_strength").is_some() || table.get("relaxation_time").is_some() {
-                        mat.plastic = true.into();
-                        mat.yield_strength = as_float_or(&obj, "yield_strength", 0.0) as f32;
-                        mat.work_hardening = as_float_or(&obj, "work_hardening", 0.0) as f32;
-                        mat.work_hardening_exp = as_float_or(&obj, "work_hardening_exp", 2.0) as f32;
-                        mat.kinematic_hardening = as_float_or(&obj, "kinematic_hardening", 0.0) as f32;
-                        mat.thermal_softening = as_float_or(&obj, "thermal_softening", 0.0) as f32;
-                        mat.relaxation_time = as_float_or(&obj, "relaxation_time", 1.0) as f32;
-                    }
-
-                    let region = parse_region_from_mat(table);
-
-                    let vel = as_vec4_or(&obj, "velocity", [0.0,0.0,0.0,0.0].into());
-                    let center = region.bound().center();
-
-                    let mut ang_vel = [0.0;6];
-                    if let Some(arr) = table.get("angular_velocity") {
-                        let mut i = 0;
-                        for val in arr.as_array().unwrap() {
-                            ang_vel[i] = val.as_float().unwrap() as f32;
-                            i += 1;
-                        }
-                    }
-
-                    let mat_region = MaterialRegion::with_vel(
-                        region,
-                        get_packing(&obj, h),
-                        mat,
-                        move |p| {
-                            let r = [p[0]-center[0], p[1]-center[1], p[2]-center[2], p[3]-center[3]];
-                            let w = ang_vel;
-                            [
-                                w[1]*r[2] - w[2]*r[1] - w[3]*r[3] + vel[0],
-                                w[2]*r[0] - w[0]*r[2] + w[4]*r[3] + vel[1],
-                                w[0]*r[1] - w[1]*r[0] - w[5]*r[3] + vel[2],
-                                w[3]*r[0] - w[4]*r[1] + w[5]*r[3] + vel[3],
-                            ].into()
-                        }
-                    );
-
-                    if !table.get("on_click").is_some() {
-                        list.push(mat_region);
-                        names.push(name.as_str());
-                        get_interactions(name.as_str(), &obj, h as f64, &mut interaction_map);
-                        set_colors_and_den(
-                            &obj, &mut shader, mat_number,
-                            if mat.state_eq==StateEquation::IdealGas as u32 {mat.start_den} else {mat.target_den}
-                        );
-                        mat_number += 1;
-                    } else {
-                        let relative = table.get("on_click").unwrap().as_str().unwrap() == "Relative";
-                        on_click.push(
-                            (mat_region, relative, as_vec4_or(&obj, "color", [0.0,0.0,0.0,1.0].into()))
-                        );
-                    }
-
-                }
-            }
-
-        };
-
+        //Construct the iterator
         let integrator: Box<dyn VelIntegrates<_, _>> = {
-            match as_str_or(&config, "integrator", "verlet").to_lowercase().as_ref() {
+            match cfg.integrator.to_lowercase().as_ref() {
                 "verlet" => Box::new(VelocityVerlet),
                 "euler" => Box::new(EULER),
                 "midpoint" => Box::new(MIDPOINT),
@@ -775,24 +342,8 @@ fn main() {
             }
         };
 
-        let mut interaction_lists = Vec::new();
-
-        for i in 0..list.len() {
-            let name1 = names[i];
-            let mut sublist = Vec::new();
-            for j in 0..list.len() {
-                let name2 = names[j];
-                sublist.push(
-                    (match interaction_map.get(&(name1,name2)) {
-                        Some(a) => Some(a),
-                        None => interaction_map.get(&(name2,name1))
-                    }).map(|a| *a)
-                );
-            }
-            interaction_lists.push(sublist);
-        }
-
-        let interactions = interaction_lists.iter().map(|l| &l[0..]).collect::<Vec<_>>();
+        let interactions = cfg.interactions.iter().map(|l| &l[0..]).collect::<Vec<_>>();
+        let objects = cfg.objects.clone().into_iter().map(|x| x.region).collect::<Vec<_>>();
 
         if record {unsafe {ar_physics::LOGGING = false}; }
 
@@ -801,7 +352,10 @@ fn main() {
             "world",
             if tps < 0.0 {ConstantTimer::new_uncapped()} else {ConstantTimer::from_tps(tps)},
             FluidSim::new(&gl_provider,
-                &list[0..], &interactions[0..], AABB{min:min, dim:dim}, h, integrator, dt, subticks, g, alpha
+                &objects[0..], &interactions[0..],
+                AABB{min:cfg.min, dim:cfg.dim}, cfg.h,
+                integrator, cfg.dt, cfg.subticks,
+                cfg.g, cfg.alpha
             ).unwrap()
         );
 
@@ -810,13 +364,9 @@ fn main() {
         let window1 = Arc::new(RefCell::new(window));
         let window2 = window1.clone();
 
-        let camera_pos = as_float_vec_or(&config, "view_pos", vec![0.0,0.0]);
-        let scale = as_float_or(&config, "view_scale", 1.0);
-        let mut rot = as_float_or(&config, "view_angle", 0.0).to_radians();
-
         let (mut x, mut y) = window1.borrow().get_cursor_pos();
         let (mut l_pressed, mut m_pressed, mut r_pressed) = (false, false, false);
-        let (mut trans_x, mut trans_y) = (-camera_pos[0],-camera_pos[1]);
+        let (mut trans_x, mut trans_y) = (-cfg.camera_pos[0],-cfg.camera_pos[1]);
 
         let mut pixels = if record {
             Some(vec![0u8; 3usize * rec_w as usize * rec_h as usize].into_boxed_slice())
@@ -867,6 +417,10 @@ fn main() {
         }
 
 
+        let mut scale = cfg.scale;
+        let mut rot = cfg.rot;
+        let mut mat_number = objects.len();
+        let on_click = cfg.on_click.clone();
 
         engine.add_component_from_fn(
             "renderer",
@@ -898,7 +452,7 @@ fn main() {
 
                 //note, each thing is a column, not row
                 {
-                    // let s = scale as f32;
+                    // let s = cfg.scale as f32;
                     let t = rot as f32;
                     *shader.trans = [
                         [t.cos(),        0.0,           t.sin(),   0.0],
@@ -941,11 +495,14 @@ fn main() {
                 let min_size = size_x.min(size_y);
 
                 if !m && m_pressed {
-                    for (region, relative, color) in on_click.iter() {
+                    for obj in on_click.iter() {
+
+                        let (region, relative, colors) = (&obj.region, obj.relative, obj.colors);
+
                         shader.densities[mat_number] = region.mat.target_den;
-                        shader.c1[mat_number] = *color;
-                        shader.c2[mat_number] = *color;
-                        shader.c3[mat_number] = *color;
+                        shader.c1[mat_number] = colors[0];
+                        shader.c2[mat_number] = colors[1];
+                        shader.c3[mat_number] = colors[2];
 
                         let offset = match relative {
                             true => Some([
@@ -1013,9 +570,7 @@ fn main() {
 
             }
         );
-
-        let trans = !lighting;
-
+        
         unsafe {
             gl::Viewport(80*2,0,win_h as i32,win_h as i32);
             gl::Disable(gl::CULL_FACE);
@@ -1024,7 +579,7 @@ fn main() {
             gl::Enable(0x8861);
             gl::Enable(gl::BLEND);
 
-            if trans {
+            if !cfg.lighting {
                 gl::Disable(gl::DEPTH_TEST);
                 gl::BlendEquationSeparate(gl::FUNC_ADD, gl::FUNC_ADD);
                 gl::BlendFuncSeparate(gl::ONE_MINUS_DST_ALPHA, gl::ONE_MINUS_SRC_ALPHA, gl::DST_ALPHA, gl::SRC_ALPHA);

@@ -22,6 +22,17 @@ pub struct MaterialRegion {
     pub vel: Arc<dyn Fn(vec4)->vec4>
 }
 
+impl Default for MaterialRegion {
+    fn default() -> Self {
+        MaterialRegion {
+            region: Arc::new( AABB::default() ),
+            packing_coefficient: 0.0,
+            mat: Material::default(),
+            vel: Arc::new(|_| vec4::default())
+        }
+    }
+}
+
 impl MaterialRegion {
 
     pub fn new<R:Region+Send+Sync>(region: R, packing: f32, mat: Material) -> Self {

@@ -173,6 +173,10 @@ impl FluidSim {
         &self.particles
     }
 
+    pub fn num_materials(&self) -> usize {
+        self.particles.materials().len()
+    }
+
     pub fn add_particles(&mut self, obj: MaterialRegion, offset: Option<vec4>) -> bool {
         let h = *self.fluid_forces.borrow().h;
         let (mut p, mat) = obj.gen_particles(h, 0);

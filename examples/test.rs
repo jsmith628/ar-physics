@@ -8,7 +8,6 @@ extern crate toml;
 extern crate stl_io;
 
 extern crate ar_physics;
-extern crate ar_engine;
 extern crate numerical_integration;
 
 
@@ -34,9 +33,6 @@ use std::thread::sleep;
 use ar_physics::soft_body::*;
 use ar_physics::soft_body::material_region::*;
 use ar_physics::soft_body::particle_state::*;
-
-use ar_engine::engine::{Engine, Component};
-use ar_engine::timer::{ConstantTimer};
 
 use numerical_integration::*;
 

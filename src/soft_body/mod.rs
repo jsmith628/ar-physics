@@ -207,10 +207,10 @@ impl FluidSim {
 
 }
 
-impl ::ar_engine::engine::Component for FluidSim {
+impl FluidSim {
 
     #[inline]
-    fn init(&mut self) {
+    pub fn init(&mut self) {
         let neighbors = &self.neighbor_list;
         let ff = &self.fluid_forces;
         let sf = &self.solid_forces;
@@ -232,7 +232,7 @@ impl ::ar_engine::engine::Component for FluidSim {
         );
     }
 
-    fn update(&mut self) {
+    pub fn update(&mut self) {
         let prof = unsafe { crate::PROFILER.as_mut().unwrap() };
         let frame = prof.new_frame();
         if unsafe {crate::LOGGING} { println!("{:?}", frame); }

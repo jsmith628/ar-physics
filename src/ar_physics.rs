@@ -7,7 +7,6 @@
 
 #[macro_use] extern crate gl_struct;
 
-extern crate ar_engine;
 extern crate maths_traits;
 extern crate numerical_integration;
 extern crate free_algebra;

@@ -18,3 +18,4 @@ gl-struct = {path="../gl-struct"}
 glfw = "0.34.0"
 toml = "0.5"
 stl_io = "0.4"
+clap = "2.34.0"

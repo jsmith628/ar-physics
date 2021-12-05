@@ -1,34 +1,34 @@
 #![feature(maybe_uninit_ref)]
 #![recursion_limit="2048"]
 
-#[macro_use]
-extern crate gl_struct;
 extern crate glfw;
 extern crate toml;
 extern crate stl_io;
+extern crate clap;
 
+#[macro_use]
+extern crate gl_struct;
 extern crate ar_physics;
 extern crate numerical_integration;
 
+use toml::Value;
+use clap::*;
+use stl_io::*;
 
+use std::io::*;
+use std::mem::*;
+use std::time::*;
+
+use std::io::Read;
+use std::fs::File;
+use std::collections::HashMap;
+use std::thread::sleep;
 use std::sync::Arc;
 use std::cell::RefCell;
 
 use gl_struct::*;
 use gl::types::*;
 use gl_struct::glsl_type::{vec4, vec3};
-
-use toml::Value;
-
-use stl_io::*;
-
-use std::io::*;
-use std::mem::*;
-use std::time::*;
-use std::io::Read;
-use std::fs::File;
-use std::collections::HashMap;
-use std::thread::sleep;
 
 use ar_physics::soft_body::*;
 use ar_physics::soft_body::material_region::*;
@@ -43,50 +43,107 @@ mod test_mods;
 
 fn main() {
 
-    //parse cli arguments
-    enum ParserState { Default, Width, Height, RecordWidth, RecordHeight, FPS, TPS }
+    let app = {
+        app_from_crate!()
+        .setting(AppSettings::ColorAuto)
+        .setting(AppSettings::GlobalVersion)
+        .setting(AppSettings::DisableHelpSubcommand)
+        .arg(
+            Arg::with_name("tps")
+            .short("t")
+            .long("tps")
+            .takes_value(true)
+            .value_name("RATE")
+            .default_value("-1")
+            .set(ArgSettings::AllowLeadingHyphen)
+            .help("The target number of ticks per second")
+            .long_help(
+                "The target number of ticks per second.\n\
+                 A negative value will result in an unlocked tick rate."
+            )
+        ).arg(
+            Arg::with_name("fps")
+            .short("f")
+            .long("fps")
+            .takes_value(true)
+            .value_name("RATE")
+            .default_value("-1")
+            .set(ArgSettings::AllowLeadingHyphen)
+            .help("The target number of frames per second")
+            .long_help(
+                "The target number of frames per second.\n\
+                 A negative value will result in an unlocked frame rate."
+            )
+        ).arg(
+            Arg::with_name("window width")
+            .short("w")
+            .long("width")
+            .takes_value(true)
+            .value_name("WIDTH")
+            .default_value("960")
+            .help("The initial width of the application window")
+        ).arg(
+            Arg::with_name("window height")
+            .short("h")
+            .long("height")
+            .takes_value(true)
+            .value_name("HEIGHT")
+            .default_value("720")
+            .help("The initial height of the application window")
+        ).arg(
+            Arg::with_name("record")
+            .short("r")
+            .long("record")
+            .help("Causes the application to make an additional render offscreen and print each frame to stdout")
+        ).arg(
+            Arg::with_name("recording width")
+            // .short("rw")
+            .long("record-width")
+            .takes_value(true)
+            .value_name("WIDTH")
+            .help("The width in pixels of the application recording")
+        ).arg(
+            Arg::with_name("recording height")
+            // .short("rh")
+            .long("record-height")
+            .takes_value(true)
+            .value_name("HEIGHT")
+            .help("The height in pixels of the application recording")
+        ).arg(
+            Arg::with_name("verbose")
+            .short("v")
+            .long("verbose")
+            .help("Causes debug information to be printed")
+        ).arg(
+            Arg::with_name("example config")
+            .takes_value(true)
+            .value_name("CONFIG")
+            .help("A toml file specifying the settings for the simulation")
+        )
+    };
 
-    let mut config_loc = None;
-    let (mut win_w, mut win_h) = (640*3/2, 480*3/2);
-    let (mut rec_w, mut rec_h) = (None, None);
-    let (mut fps, mut tps) = (75.0, 75.0);
-    let mut record = false;
+    //
+    //Parse cli args
+    //
 
-    let mut state = ParserState::Default;
+    let matches = app.get_matches();
 
-    for arg in std::env::args() {
+    let config_loc = matches.value_of("example config");
 
-        let mut reset = true;
+    let tps = matches.value_of("tps").unwrap().parse::<f64>().expect("--tps requires a floating point argument");
+    let fps = matches.value_of("fps").unwrap().parse::<f64>().expect("--fps requires a floating point argument");
 
-        match state {
-            ParserState::Width => win_w = arg.parse::<u32>().unwrap(),
-            ParserState::Height => win_h = arg.parse::<u32>().unwrap(),
-            ParserState::RecordWidth => rec_w = arg.parse::<u32>().ok(),
-            ParserState::RecordHeight => rec_h = arg.parse::<u32>().ok(),
-            ParserState::FPS => fps = arg.parse::<f64>().unwrap(),
-            ParserState::TPS => tps = arg.parse::<f64>().unwrap(),
+    let win_w = matches.value_of("window width").unwrap().parse::<u32>().expect("--width requires a positive integer argument");
+    let win_h = matches.value_of("window height").unwrap().parse::<u32>().expect("--height requires a positive integer argument");
+    let rec_w = matches.value_of("recording width").map(
+        |s| s.parse::<u32>().expect("--record-width requires a positive integer argument")
+    ).unwrap_or(win_w);
+    let rec_h = matches.value_of("recording height").map(
+        |s| s.parse::<u32>().expect("--record-height requires a positive integer argument")
+    ).unwrap_or(win_h);
 
-            ParserState::Default => {
-                reset = false;
-                match arg.as_str() {
-                    "-w"|"--width" => state = ParserState::Width,
-                    "-h"|"--height" => state = ParserState::Height,
-                    "-rw"|"--record-width" => state = ParserState::RecordWidth,
-                    "-rh"|"--record-height" => state = ParserState::RecordHeight,
-                    "-f"|"--fps" => state = ParserState::FPS,
-                    "-t"|"--tps" => state = ParserState::TPS,
-                    "-r"|"--record" => record = true,
-                    _ => config_loc = Some(arg)
-                }
-            }
-        }
-
-        if reset {state = ParserState::Default;}
-
-    }
-
-    let rec_w = rec_w.unwrap_or(win_w);
-    let rec_h = rec_h.unwrap_or(win_h);
+    let record = matches.is_present("record");
+    let verbose = matches.is_present("verbose");
 
     if let Some(path) = config_loc {
 
@@ -124,14 +181,18 @@ fn main() {
             }
         };
 
+        //reformat the object and interactions list. This could probably be a little more efficient
         let interactions = cfg.interactions.iter().map(|l| &l[0..]).collect::<Vec<_>>();
         let objects = cfg.objects.clone().into_iter().map(|x| x.region).collect::<Vec<_>>();
 
-        if record {unsafe {ar_physics::LOGGING = false}; }
+        //enable debug logging if we aren't recording and -v was used
+        unsafe {ar_physics::LOGGING = !record && verbose};
 
+        //initialize the window and renderer
         let mut renderer =  Renderer::init(&cfg, win_w, win_h, rec_w, rec_h, record);
         let window = renderer.window();
 
+        //pass in all the simulation configuration and init the simulation
         let mut sim = {
             FluidSim::new(
                 renderer.gl(),
@@ -143,6 +204,7 @@ fn main() {
         };
         sim.init();
 
+        //ngl... I don't remember why this is here, but I don't wanna touch it for now...
         sleep(Duration::from_millis(1000));
 
         //the main simulation loop
@@ -164,12 +226,18 @@ fn main() {
                 renderer.render(&mut sim);
             }
 
-            //sleep for a little bit so we don't just waste cpu in a loop
+            //
+            //Sleep for a little bit so we don't just waste cpu in a loop
+            //
+
             let now = Instant::now();
             let (d1, d2) = (now - last_tick, now - last_frame);
 
             //gotta make sure there's no overflow
             if dt > d1.as_secs_f64() && df > d2.as_secs_f64() {
+                //sleep for half the time until the next tick or frame
+                //the `/2` part is so that we don't accidentally take too much time sleeping
+                //it's a little crude, but it works
                 sleep((Duration::from_secs_f64(dt)-d1).min(Duration::from_secs_f64(df)-d2) / 2);
             }
 

@@ -146,20 +146,20 @@ fn main() {
         sleep(Duration::from_millis(1000));
 
         //the main simulation loop
-        let (dt, df) = (Duration::from_secs_f64(1.0 / tps), Duration::from_secs_f64(1.0 / fps));
+        let (dt, df) = (1.0 / tps, 1.0 / fps);
         let (mut last_tick, mut last_frame) = (Instant::now(), Instant::now());
         while !window.borrow().should_close() {
 
             //note that if dt or df is negative, then the checks will always come out true
 
             let now = Instant::now();
-            if (now - last_tick) >= dt {
+            if (now - last_tick).as_secs_f64() >= dt {
                 last_tick = now;
                 sim.update();
             }
 
             let now = Instant::now();
-            if (now - last_frame) >= df {
+            if (now - last_frame).as_secs_f64() >= df {
                 last_frame = now;
                 renderer.render(&mut sim);
             }
@@ -169,8 +169,8 @@ fn main() {
             let (d1, d2) = (now - last_tick, now - last_frame);
 
             //gotta make sure there's no overflow
-            if dt > d1 && df > d2 {
-                sleep((dt-d1).min(df-d2) / 2);
+            if dt > d1.as_secs_f64() && df > d2.as_secs_f64() {
+                sleep((Duration::from_secs_f64(dt)-d1).min(Duration::from_secs_f64(df)-d2) / 2);
             }
 
         }

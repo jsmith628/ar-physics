@@ -171,6 +171,8 @@ impl Renderer {
 
     pub fn init(cfg: &Config, win_w: u32, win_h: u32, rec_w: u32, rec_h: u32, record: bool) -> Renderer {
 
+        // println!("{} {} {} {}", win_w, win_h, rec_w, rec_h);
+
         let mut glfw = glfw::init(glfw::FAIL_ON_ERRORS).unwrap();
         let mut window = glfw.create_window(win_w, win_h, cfg.title, glfw::WindowMode::Windowed).unwrap().0;
         if record {window.set_resizable(false);}
@@ -206,8 +208,9 @@ impl Renderer {
             shader.densities[id] = obj.region.mat.start_den;
         }
 
+        let size = 3usize * rec_w as usize * rec_h as usize;
         let mut pixels = if record {
-            Some(vec![0u8; 3usize * rec_w as usize * rec_h as usize].into_boxed_slice())
+            Some(vec![0u8; size].into_boxed_slice())
         } else {None};
 
         let [color,depth] = unsafe {
@@ -313,16 +316,20 @@ impl Renderer {
                 gl::BindFramebuffer(gl::READ_FRAMEBUFFER, self.fb);
                 gl::ReadBuffer(gl::COLOR_ATTACHMENT0);
 
-                gl::ReadPixels(
+                gl::Flush();
+                gl::Finish();
+
+                gl::ReadnPixels(
                     0,0,
                     self.rec_w as GLsizei, self.rec_h as GLsizei,
                     gl::RGB,gl::UNSIGNED_BYTE,
+                    pixels.len() as GLsizei,
                     &mut pixels[0] as *mut u8 as *mut gl::types::GLvoid
                 );
 
             }
 
-            std::io::stdout().write(&**pixels).unwrap();
+            std::io::stdout().write_all(&**pixels).unwrap();
 
         }
 

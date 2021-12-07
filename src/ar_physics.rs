@@ -1,9 +1,6 @@
 #![recursion_limit="65536"]
 #![feature(trivial_bounds)]
 #![feature(allocator_api)]
-#![feature(non_exhaustive)]
-#![feature(wait_until)]
-#![feature(maybe_uninit_ref)]
 
 #[macro_use] extern crate gl_struct;
 

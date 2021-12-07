@@ -185,7 +185,7 @@ impl Renderer {
         let gl = unsafe {
             GLProvider::load(|s| ::std::mem::transmute(glfw.get_proc_address_raw(s)))
         };
-        let mut context = gl_struct::Context::init(&gl);
+        let context = gl_struct::Context::init(&gl);
         let mut shader = ParticleShader::init(&gl).unwrap();
 
         //
@@ -209,7 +209,7 @@ impl Renderer {
         }
 
         let size = 3usize * rec_w as usize * rec_h as usize;
-        let mut pixels = if record {
+        let pixels = if record {
             Some(vec![0u8; size].into_boxed_slice())
         } else {None};
 

@@ -1,4 +1,3 @@
-#![feature(maybe_uninit_ref)]
 #![recursion_limit="2048"]
 
 extern crate glfw;

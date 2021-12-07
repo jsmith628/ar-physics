@@ -2,7 +2,7 @@
 name = "ar-physics"
 version = "0.1.0"
 authors = ["Joshua Smith <jsmith62831@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "ar_physics"

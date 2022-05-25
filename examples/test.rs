@@ -46,7 +46,6 @@ fn main() {
         app_from_crate!()
         .setting(AppSettings::ColorAuto)
         .setting(AppSettings::GlobalVersion)
-        .setting(AppSettings::DisableHelpSubcommand)
         .arg(
             Arg::with_name("tps")
             .short("t")

@@ -19,11 +19,18 @@ simulation software by any means.
 
 # How to Run
 
-To compile and run the simulation, make sure [`cargo`](1) and Rust and is
-installed on your system, and simply run the `test.rs` example while providing a
-`.toml` to configure the simulation
-```bash
-cargo run --release --example test -- "examples/your-example.toml"
+Pre-compiled binaries can be found on the releases page on GitHub, and the
+simulation can be run simply by running the included executable and passing a
+`toml` file to configure the desired simulation.
+
+Concretely, in the directory of the extracted `zip`, for Linux run:
+```Bash
+./ar-physics "examples/[your-example].toml"
+```
+Or for Windows, run:
+
+```Bash
+ar-physics.exe "examples/[your-example].toml"
 ```
 
 Provided in the `examples/` directory is a large set of premade examples and
@@ -31,13 +38,15 @@ tests that should work out of the box. (save for a couple, like
 `examples/wave_3d.toml`, that were designed to be recorded instead of played
 in real-time).
 
-Additionally, `examples/test.sh` provides a simple script for selecting between
-the noteworthy examples using a `POSIX` shell.
-
-Finally, all of the runtime flags for the test can be queried with:
+Finally, all of the runtime flags can be queried with:
 ```bash
-cargo run --release --example test -- --help
+./ar-physics --help
 ```
+or
+```bash
+ar-physics.exe --help
+```
+
 These options include capping the framerate and tickrate, changing the
 window size, etc.
 
@@ -49,10 +58,32 @@ output each frame as a raw `RGB24` image directly to `stdout`. This output
 can then be directed into another program (eg. `ffmpeg`) to convert the
 data into a more suitable compressed format:
 ```bash
-cargo run --release --example test -- \
+./ar-physics \
   /examples/wave_3d.toml --record --fps 60 --record-width 1920 --record-height 1080 | \
   ffmpeg -f rawvideo -r 60 -s 1920x1080 -i - -vf vflip examples/recordings/out.mp4
 ```
+
+# Compiling from Source
+
+To compile from source, make sure [`cargo`](1) and `Rust` are installed on your system and run:
+```bash
+cargo build --release --example test
+```
+Then, the compiled demo binary will be located in the `target/release` directory.
+
+To _run_ directly from source, you can use:
+```bash
+cargo run --release --example test -- examples/[your-example].toml
+```
+Making sure to put all command arguments after the `--`
+
+
+# Simulation Controls
+
+During the simulation, the camera can be rotated or moved by dragging the cursor
+and holding left click or right click respectively. Additionally, in simulations
+that support it, using the middle mouse button will create objects at the location
+of the cursor.
 
 
 [1]: https://doc.rust-lang.org/cargo/getting-started/installation.html
